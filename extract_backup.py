@@ -43,30 +43,42 @@ def extract_archive(archive_path, target_dir=DATA_DIR):
             print(f"[1/4] Extracting {ext.upper()} archive via system extractor...")
             extracted = False
 
-            # Check for native 7z on Linux/Railway or Windows PATH
-            seven_zip = shutil.which("7z") or shutil.which("7za")
-            if seven_zip:
+            # 1. Check for unar (Universal Linux/macOS RAR/ZIP/7z extractor)
+            unar = shutil.which("unar")
+            if unar:
                 try:
-                    cmd = [seven_zip, "x", "-y", f"-o{temp_extract_dir}", archive_path]
+                    cmd = [unar, "-o", temp_extract_dir, "-f", archive_path]
                     ret = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if ret.returncode == 0:
                         extracted = True
                 except Exception as e:
-                    print(f"[7z warning]: {e}")
+                    print(f"[unar warning]: {e}")
 
+            # 2. Check for bsdtar (Linux libarchive-tools or Windows System32 tar.exe)
             if not extracted:
-                # Check for native tar on Linux / Windows
-                tar_cmd = shutil.which("tar") or (r"C:\Windows\System32\tar.exe" if os.path.exists(r"C:\Windows\System32\tar.exe") else None)
-                if tar_cmd:
+                bsdtar = shutil.which("bsdtar") or (r"C:\Windows\System32\tar.exe" if os.path.exists(r"C:\Windows\System32\tar.exe") else None)
+                if bsdtar:
                     try:
-                        ret = subprocess.run([tar_cmd, "-xf", archive_path, "-C", temp_extract_dir], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        ret = subprocess.run([bsdtar, "-xf", archive_path, "-C", temp_extract_dir], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                         if ret.returncode == 0:
                             extracted = True
                     except Exception as e:
-                        print(f"[tar warning]: {e}")
+                        print(f"[bsdtar warning]: {e}")
 
+            # 3. Check for native 7z on Linux/Railway or Windows PATH
             if not extracted:
-                # Check for unrar on Linux / Windows
+                seven_zip = shutil.which("7z") or shutil.which("7za")
+                if seven_zip:
+                    try:
+                        cmd = [seven_zip, "x", "-y", f"-o{temp_extract_dir}", archive_path]
+                        ret = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        if ret.returncode == 0:
+                            extracted = True
+                    except Exception as e:
+                        print(f"[7z warning]: {e}")
+
+            # 4. Check for unrar
+            if not extracted:
                 unrar = shutil.which("unrar")
                 if unrar:
                     try:
@@ -76,8 +88,8 @@ def extract_archive(archive_path, target_dir=DATA_DIR):
                     except Exception as e:
                         print(f"[unrar warning]: {e}")
 
+            # 5. Check Windows standard program file locations
             if not extracted:
-                # Windows standard program file locations
                 for exe in [r"C:\Program Files\7-Zip\7z.exe", r"C:\Program Files\WinRAR\WinRAR.exe", r"C:\Program Files\WinRAR\Rar.exe"]:
                     if os.path.exists(exe):
                         cmd = f'"{exe}" x -y "{archive_path}" "{temp_extract_dir}\\"'
@@ -86,7 +98,7 @@ def extract_archive(archive_path, target_dir=DATA_DIR):
                         break
 
             if not extracted:
-                return {"success": False, "message": f"Could not find automated {ext.upper()} extractor (7z, unrar, tar) on host system."}
+                return {"success": False, "message": f"Could not extract {ext.upper()} archive. Please install unar, bsdtar, or 7z."}
 
         elif ext in [".xlsx", ".xls", ".xml", ".json"]:
             # Direct file upload (Excel, XML Daybook, or JSON Sync)

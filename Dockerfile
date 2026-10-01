@@ -5,6 +5,8 @@ WORKDIR /app
 # Install native archive extraction utilities for .zip, .rar, and .7z
 RUN apt-get update && apt-get install -y --no-install-recommends \
     p7zip-full \
+    unar \
+    libarchive-tools \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 

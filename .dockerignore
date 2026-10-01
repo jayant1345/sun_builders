@@ -6,3 +6,9 @@ __pycache__/
 *.pyc
 *.pyo
 .git/
+data/*/*.1800
+data/*/*.TSF
+data/*/*.900
+*.rar
+*.zip
+*.7z
