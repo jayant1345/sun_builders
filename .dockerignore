@@ -1,0 +1,8 @@
+downloads/
+uploads/*.zip
+uploads/*.rar
+uploads/*.7z
+__pycache__/
+*.pyc
+*.pyo
+.git/

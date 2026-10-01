@@ -1,0 +1,1894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>Sun Builders Projects LLP - Real Estate GST Automation Platform</title>
+  
+  <!-- Typography: Google Fonts (Outfit & Inter & JetBrains Mono) -->
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  
+  <!-- Material Symbols Outlined -->
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  
+  <!-- Tailwind CSS v3 with Plugins -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  
+  <script id="tailwind-config">
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            "background": "#f4f7fa",                 /* Light fresh executive background */
+            "surface": "#ffffff",                    /* Clean white card surface */
+            "surface-dim": "#f8fafc",                /* Subdued container surface */
+            "surface-container-lowest": "#ffffff",   /* Pure white inputs/tables */
+            "surface-container-low": "#ffffff",      /* Header & sidebar surface */
+            "surface-container": "#f8fafc",          /* Soft section cards */
+            "surface-container-high": "#f1f5f9",     /* Active pills and hover states */
+            "surface-container-highest": "#e2e8f0",  /* Subtle borders */
+            "on-surface": "#0f172a",                 /* Deep slate primary text */
+            "on-surface-variant": "#64748b",         /* Slate grey secondary text */
+            "primary": "#2563eb",                    /* Google Stitch Enterprise Royal Blue */
+            "primary-container": "#1d4ed8",          /* Deep blue container */
+            "on-primary": "#ffffff",
+            "on-primary-container": "#ffffff",
+            "secondary": "#059669",                  /* Vibrant Emerald Green (BU Exempt / Verified) */
+            "secondary-container": "#10b981",
+            "on-secondary": "#ffffff",
+            "tertiary": "#d97706",                   /* Vibrant Warm Amber (Real Estate GST) */
+            "tertiary-container": "#b45309",
+            "outline": "#94a3b8",                    /* Crisp slate outline */
+            "outline-variant": "#e2e8f0",            /* Soft border outline */
+            "error": "#dc2626"                       /* Crimson Red */
+          },
+          fontFamily: {
+            sans: ["Inter", "sans-serif"],
+            display: ["Outfit", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          },
+          boxShadow: {
+            "soft": "0 10px 25px -5px rgba(30, 41, 59, 0.04), 0 8px 10px -6px rgba(30, 41, 59, 0.04)",
+            "card": "0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)",
+            "card-hover": "0 14px 30px -4px rgba(37, 99, 235, 0.10), 0 6px 12px -3px rgba(15, 23, 42, 0.03)"
+          }
+        }
+      }
+    };
+  </script>
+  
+  <style>
+    :root {
+      --bg-color: #f4f7fa;
+      --card-bg: #ffffff;
+      --border-color: #e2e8f0;
+      --text-primary: #0f172a;
+      --text-muted: #64748b;
+      --accent-blue: #2563eb;
+      --accent-green: #059669;
+      --accent-amber: #d97706;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f4f7fa;
+      color: #0f172a;
+    }
+    h1, h2, h3, h4, .font-display {
+      font-family: 'Outfit', sans-serif;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .glass-panel {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .glass-panel:hover {
+      border-color: #cbd5e1;
+      box-shadow: 0 12px 28px -4px rgba(37, 99, 235, 0.08), 0 6px 12px -3px rgba(15, 23, 42, 0.03);
+    }
+    .terminal-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .terminal-scrollbar::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    .terminal-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    .terminal-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #2563eb;
+    }
+    .table-scrollbar::-webkit-scrollbar {
+      height: 8px;
+    }
+    .table-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    .table-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    .table-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface antialiased min-h-screen flex flex-col selection:bg-blue-100 selection:text-blue-900 relative overflow-x-hidden">
+  
+  <!-- Ambient Backdrop Glows (Stitch Soft Pastels) -->
+  <div class="fixed top-0 left-64 w-[750px] h-[350px] bg-blue-100/40 rounded-full blur-[140px] pointer-events-none -z-10"></div>
+  <div class="fixed bottom-0 right-0 w-[600px] h-[400px] bg-emerald-100/35 rounded-full blur-[160px] pointer-events-none -z-10"></div>
+
+  <!-- ========================================================================= -->
+  <!-- 1. FIXED SIDE NAVIGATION DOCK                                              -->
+  <!-- ========================================================================= -->
+  <aside class="fixed top-0 left-0 h-screen w-64 flex flex-col justify-between p-4 z-40 bg-white border-r border-outline-variant shadow-sm">
+    <div class="flex flex-col gap-4">
+      <!-- Entity Shield Header -->
+      <div class="flex items-center gap-3 px-2 py-1.5 border-b border-outline-variant/60 pb-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/25 flex-shrink-0">
+          <span class="material-symbols-outlined text-[22px]">domain</span>
+        </div>
+        <div class="overflow-hidden">
+          <h2 class="font-display font-bold text-on-surface truncate text-base tracking-tight">Sun Builders Projects</h2>
+          <p class="font-mono text-xs text-on-surface-variant truncate">GSTIN: 24AAACS8921K1Z2</p>
+        </div>
+      </div>
+
+      <!-- Quick Action: Process Vouchers Button -->
+      <button id="btn-process-vouchers" class="w-full py-2.5 px-3 rounded-xl bg-blue-50 hover:bg-blue-100/80 border border-blue-200 text-blue-700 font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.99] shadow-xs">
+        <span class="material-symbols-outlined text-[18px]">receipt_long</span>
+        <span>Process Active Vouchers</span>
+      </button>
+
+      <!-- Main Navigation Items -->
+      <nav class="flex flex-col gap-1 mt-1">
+        <a class="nav-tab flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-blue-50 text-blue-700 font-semibold border-l-4 border-blue-600 text-sm transition-all duration-150 shadow-xs" data-tab="overview" href="#overview">
+          <span class="material-symbols-outlined text-[18px]">dashboard</span>
+          <span>Overview</span>
+        </a>
+        <a class="nav-tab flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="projects" href="#projects">
+          <span class="material-symbols-outlined text-[18px]">domain</span>
+          <span>Projects Ledger</span>
+        </a>
+        <a class="nav-tab flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="vouchers" href="#vouchers">
+          <span class="material-symbols-outlined text-[18px]">receipt_long</span>
+          <span>Voucher Ingestion</span>
+        </a>
+        <a class="nav-tab flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="itc" href="#itc">
+          <span class="material-symbols-outlined text-[18px]">account_balance</span>
+          <span>ITC Reconciler</span>
+        </a>
+        <a class="nav-tab flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="returns" href="#returns">
+          <span class="material-symbols-outlined text-[18px]">assignment_turned_in</span>
+          <span>GSTR-1 &amp; 3B</span>
+        </a>
+        <a class="nav-tab flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="audit" href="#audit">
+          <span class="material-symbols-outlined text-[18px]">verified_user</span>
+          <span>Audit Inspection</span>
+        </a>
+      </nav>
+    </div>
+
+    <!-- Sidebar Bottom Footer -->
+    <div class="pt-4 border-t border-outline-variant flex flex-col gap-1">
+      <a class="nav-tab flex items-center gap-3 px-3.5 py-2 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="rules" href="#rules">
+        <span class="material-symbols-outlined text-[18px]">gavel</span>
+        <span>Regulatory Rules</span>
+      </a>
+      <a class="nav-tab flex items-center gap-3 px-3.5 py-2 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="help" href="#help">
+        <span class="material-symbols-outlined text-[18px]">help_outline</span>
+        <span>Help &amp; API</span>
+      </a>
+      
+      <!-- System Health Indicator -->
+      <div class="mt-2 p-2.5 rounded-xl bg-slate-50 border border-outline-variant flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-secondary"></span>
+          </span>
+          <span class="text-xs text-on-surface-variant font-medium" id="tally-status-text">Tally Service</span>
+        </div>
+        <span class="font-mono text-xs text-secondary font-bold">9000 UP</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ========================================================================= -->
+  <!-- 2. MAIN WORKSPACE CONTENT CANVAS                                          -->
+  <!-- ========================================================================= -->
+  <div class="ml-64 flex-1 flex flex-col min-w-0">
+    
+    <!-- Top Header Navigation Bar -->
+    <header class="flex justify-between items-center w-full px-6 py-3 border-b border-outline-variant bg-white/95 sticky top-0 z-30 shadow-xs backdrop-blur-md">
+      <div class="flex items-center gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-display text-lg font-extrabold text-blue-950 tracking-tight">SUN BUILDERS PROJECTS LLP</h1>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+              <span class="material-symbols-outlined text-[13px]" style="font-variation-settings: 'FILL' 1;">check_circle</span> Verified Tax Entity
+            </span>
+          </div>
+          <div class="flex items-center gap-3 mt-0.5">
+            <span class="text-xs text-on-surface-variant font-medium">(Formerly Sun Realty)</span>
+            <span class="text-outline-variant">•</span>
+            <span class="font-mono text-xs text-slate-700 font-semibold bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+              GSTIN: 24AAACS8921K1Z2
+            </span>
+            <div class="flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 shadow-xs">
+              <span class="material-symbols-outlined text-primary text-[16px]">apartment</span>
+              <select id="select-header-project" class="bg-transparent border-0 p-0 text-xs font-mono text-blue-900 font-bold focus:ring-0 cursor-pointer pr-1">
+                <option value="010000" selected class="bg-white text-slate-800">Sun Atmosphere (010000)</option>
+                <option value="010010" class="bg-white text-slate-800">Sun Footprint (010010)</option>
+                <option value="010011" class="bg-white text-slate-800">Sun Park West (010011)</option>
+                <option value="010002" class="bg-white text-slate-800">Sun Silver Spring (010002)</option>
+                <option value="010009" class="bg-white text-slate-800">Sun Gravitas (010009)</option>
+                <option value="010015" class="bg-white text-slate-800">Lekhambha (010015)</option>
+              </select>
+            </div>
+            <button id="btn-header-open-bu-modal" onclick="window.openBuModal && window.openBuModal()" type="button" title="Configure BU Permission Dates" class="flex items-center gap-1 bg-amber-50 hover:bg-amber-100/80 text-amber-800 px-2.5 py-1 rounded-lg border border-amber-300 text-xs font-semibold shadow-xs transition-all cursor-pointer">
+              <span class="material-symbols-outlined text-[15px]">edit_calendar</span>
+              <span>BU Dates</span>
+            </button>
+          </div>
+        </div>
+        <div class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+          </span>
+          <span class="font-mono text-xs text-emerald-700 font-semibold">Tally 7.1 / Prime: Port 9000 Active</span>
+        </div>
+      </div>
+
+      <!-- Top Center Quick Tabs -->
+      <div class="hidden lg:flex items-center gap-6">
+        <a class="top-nav-tab text-primary border-b-2 border-primary pb-1 font-bold text-sm transition-colors" data-tab="overview" href="#overview">Compliance Engine</a>
+        <a class="top-nav-tab text-on-surface-variant hover:text-on-surface text-sm font-medium transition-colors" data-tab="audit" href="#audit">Audit Trail</a>
+        <a class="top-nav-tab text-on-surface-variant hover:text-on-surface text-sm font-medium transition-colors" data-tab="itc" href="#itc">ITC Ledger</a>
+        <a class="top-nav-tab text-on-surface-variant hover:text-on-surface text-sm font-medium transition-colors" data-tab="returns" href="#returns">Statutory Reports</a>
+      </div>
+
+      <!-- Right Controls & CA Avatar -->
+      <div class="flex items-center gap-3">
+        <div class="hidden sm:flex items-center gap-1.5 text-on-surface-variant text-xs font-mono">
+          <span class="material-symbols-outlined text-[14px]">history</span>
+          <span>Last Synced: Just now</span>
+        </div>
+        <div class="flex items-center border-l border-outline-variant pl-3 gap-2">
+          <button class="btn-open-extractor inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container border border-primary/40 text-primary hover:bg-surface-container-high hover:border-primary text-xs font-semibold shadow-sm transition-all duration-150">
+            <span class="material-symbols-outlined text-[16px]">cloud_upload</span>
+            <span>Ingest Backup (.zip / .rar)</span>
+          </button>
+          <button class="btn-resync-ledger p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" title="Sync Ledger">
+            <span class="material-symbols-outlined text-[18px]">sync</span>
+          </button>
+          <button class="btn-launch-tally p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" title="Launch Tally Setup">
+            <span class="material-symbols-outlined text-[18px]">settings_ethernet</span>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 pl-2 border-l border-outline-variant">
+          <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-primary-container p-[1px] flex items-center justify-center font-bold text-xs bg-surface-container-high text-primary">
+            CA
+          </div>
+          <div class="hidden 2xl:block text-left">
+            <div class="text-xs font-semibold text-on-surface leading-tight">CA Office Admin</div>
+            <div class="text-[11px] text-on-surface-variant leading-tight">Senior Tax Partner</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN DASHBOARD CONTENT AREA (Tabbed) -->
+    <main class="p-6 flex flex-col gap-6 max-w-[1720px] w-full mx-auto">
+      
+      <!-- ===================================================================== -->
+      <!-- TAB 1: OVERVIEW / COMPLIANCE ENGINE                                   -->
+      <!-- ===================================================================== -->
+      <div id="tab-overview" class="tab-pane flex flex-col gap-6">
+        
+        <!-- 3 Executive KPI Cards (Stitch Calibrated Architecture) -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <!-- Card 1: Dynamic Project Compliance Trigger -->
+          <div class="glass-panel rounded-2xl p-6 relative overflow-hidden group hover:border-emerald-300 transition-all duration-300 border-t-4 border-t-emerald-600 bg-white shadow-card hover:shadow-card-hover">
+            <div class="absolute -top-12 -right-12 w-32 h-32 bg-emerald-100/60 rounded-full blur-2xl group-hover:bg-emerald-200/50 transition-all"></div>
+            <div class="flex items-start justify-between gap-2 mb-3">
+              <div>
+                <span class="text-xs text-slate-500 font-mono uppercase tracking-wider font-semibold">PROJECT COMPLIANCE TRIGGER</span>
+                <h2 id="overview-project-title" class="font-display text-lg font-extrabold text-slate-900 mt-0.5">Sun Atmosphere BU Rule</h2>
+              </div>
+              <span id="overview-project-status-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+                <span class="material-symbols-outlined text-[13px]" style="font-variation-settings: 'FILL' 1;">verified</span>
+                <span id="overview-project-status-text">Statutory Cutoff Activated</span>
+              </span>
+            </div>
+            <div class="flex items-center gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 mb-3">
+              <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 shadow-xs">
+                <span class="material-symbols-outlined text-[22px]">calendar_today</span>
+              </div>
+              <div>
+                <div class="text-xs text-slate-500 font-medium">BU Permission Granted Date</div>
+                <div id="overview-bu-date" class="font-mono text-sm font-bold text-slate-900">07/03/2024 (AUDA / AMC)</div>
+              </div>
+            </div>
+            <div id="overview-bu-rule-desc" class="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200 text-xs text-slate-600 leading-relaxed mb-4">
+              <strong class="text-emerald-700 font-semibold">Statutory Rule:</strong> All advances and installment receipts received after <span class="text-slate-900 font-bold underline decoration-emerald-500">07/03/2024</span> are <strong class="text-emerald-700 font-bold">100% EXEMPT</strong> under Schedule III Entry 5 (Sale of Land &amp; Completed Building).
+            </div>
+            <div class="pt-3 border-t border-slate-100 flex items-baseline justify-between">
+              <div>
+                <div id="overview-exempt-amount" class="font-display text-2xl font-extrabold text-emerald-600 font-mono tracking-tight">₹6.76 Cr</div>
+                <div id="overview-exempt-label" class="text-xs text-slate-500 font-medium mt-0.5">Post-BU Total Exemptions Applied</div>
+              </div>
+              <span id="overview-units-badge" class="px-3 py-1 rounded-lg bg-blue-50 text-blue-700 font-mono text-xs font-bold border border-blue-200 shadow-xs">
+                258 vouchers loaded
+              </span>
+            </div>
+          </div>
+
+          <!-- Card 2: Non-GST Auto-Exclusions Engine -->
+          <div class="glass-panel rounded-2xl p-6 relative overflow-hidden group hover:border-blue-300 transition-all duration-300 border-t-4 border-t-blue-600 bg-white shadow-card hover:shadow-card-hover">
+            <div class="absolute -top-12 -right-12 w-32 h-32 bg-blue-100/60 rounded-full blur-2xl group-hover:bg-blue-200/50 transition-all"></div>
+            <div class="flex items-start justify-between gap-2 mb-3">
+              <div>
+                <span class="text-xs text-slate-500 font-mono uppercase tracking-wider font-semibold">LEDGER FILTER INTEGRITY</span>
+                <h2 id="overview-exclusions-title" class="font-display text-lg font-extrabold text-slate-900 mt-0.5">Non-GST Auto-Exclusions</h2>
+              </div>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 shadow-xs">
+                <span class="material-symbols-outlined text-[13px]">filter_alt</span>
+                Contra-Deduction Active
+              </span>
+            </div>
+            <div class="text-xs text-slate-500 font-medium mb-1.5">Auto-Segregated Pass-Through Ledgers:</div>
+            <div class="flex flex-wrap gap-1.5 mb-3">
+              <span class="px-2.5 py-1 rounded-lg bg-slate-50 text-slate-700 text-xs font-medium border border-slate-200 flex items-center gap-1">
+                <span class="material-symbols-outlined text-[14px] text-blue-600">remove_circle_outline</span> Refundable Security Deposit
+              </span>
+              <span class="px-2.5 py-1 rounded-lg bg-slate-50 text-slate-700 text-xs font-medium border border-slate-200 flex items-center gap-1">
+                <span class="material-symbols-outlined text-[14px] text-blue-600">remove_circle_outline</span> Stamp Duty &amp; Reg.
+              </span>
+              <span class="px-2.5 py-1 rounded-lg bg-slate-50 text-slate-700 text-xs font-medium border border-slate-200 flex items-center gap-1">
+                <span class="material-symbols-outlined text-[14px] text-blue-600">remove_circle_outline</span> Maintenance Deposit
+              </span>
+              <span class="px-2.5 py-1 rounded-lg bg-slate-50 text-slate-700 text-xs font-medium border border-slate-200 flex items-center gap-1">
+                <span class="material-symbols-outlined text-[14px] text-blue-600">remove_circle_outline</span> Electricity Connection Exp
+              </span>
+            </div>
+            <div class="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200 text-xs text-slate-600 leading-relaxed mb-4">
+              <span class="text-blue-700 font-bold">Compliance Guard:</span> All 5 ancillary items auto-segregated and deducted from gross receipts before taxable value computation to prevent overpayment.
+            </div>
+            <div class="pt-3 border-t border-slate-100 flex items-baseline justify-between">
+              <div>
+                <div id="overview-exclusions-amount" class="font-display text-2xl font-extrabold text-blue-600 font-mono tracking-tight">₹4.40 Cr</div>
+                <div id="overview-exclusions-label" class="text-xs text-slate-500 font-medium mt-0.5">Total Exclusions (Sun Atmosphere)</div>
+              </div>
+              <span class="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 font-mono text-xs font-bold border border-slate-200">
+                100% Reconciled
+              </span>
+            </div>
+          </div>
+
+          <!-- Card 3: Tax Rate Slabs Matrix -->
+          <div class="glass-panel rounded-2xl p-6 relative overflow-hidden group hover:border-amber-300 transition-all duration-300 border-t-4 border-t-amber-500 bg-white shadow-card hover:shadow-card-hover">
+            <div class="absolute -top-12 -right-12 w-32 h-32 bg-amber-100/60 rounded-full blur-2xl group-hover:bg-amber-200/50 transition-all"></div>
+            <div class="flex items-start justify-between gap-2 mb-3">
+              <div>
+                <span class="text-xs text-slate-500 font-mono uppercase tracking-wider font-semibold">REAL ESTATE GST REGIME</span>
+                <h2 class="font-display text-lg font-extrabold text-slate-900 mt-0.5">Tax Rate Slabs Matrix</h2>
+              </div>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 shadow-xs">
+                <span class="material-symbols-outlined text-[13px]">gavel</span>
+                Notification 03/2019-CT(R)
+              </span>
+            </div>
+            <div class="space-y-1.5 mb-3 font-mono text-xs">
+              <div id="rate-row-affordable" class="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200 transition-all">
+                <span class="text-slate-800 font-sans font-medium">Residential Affordable (≤ ₹45 Lakhs)</span>
+                <span class="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">1% no ITC</span>
+              </div>
+              <div id="rate-row-standard" class="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200 transition-all">
+                <span class="text-slate-800 font-sans font-medium">Residential Other (&gt; ₹45 Lakhs)</span>
+                <span class="text-blue-700 font-bold bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">5% no ITC</span>
+              </div>
+              <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200 transition-all">
+                <span class="text-slate-800 font-sans font-medium">Commercial Shops (RREP)</span>
+                <span class="text-blue-700 font-bold bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">5% no ITC</span>
+              </div>
+              <div id="rate-row-commercial" class="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200 transition-all">
+                <span class="text-slate-800 font-sans font-medium">Sun Gravitas (Commercial Other)</span>
+                <span class="text-amber-800 font-bold bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-md">18% (12% Eff.)</span>
+              </div>
+            </div>
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span class="text-xs text-slate-500 font-medium">Automated 1/3rd Land Abatement Applied</span>
+              </div>
+              <span class="font-mono text-xs text-slate-700 font-bold">Active Engine</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Central Control & Period Execution Panel -->
+        <section class="glass-panel rounded-2xl p-5 border-l-4 border-l-blue-600 flex flex-col xl:flex-row items-center justify-between gap-5 bg-white shadow-card">
+          <div class="flex flex-wrap items-center gap-4 w-full xl:w-auto">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1 uppercase font-bold">Filing Period (Month)</label>
+              <div class="relative">
+                <select id="select-month" class="bg-white border border-slate-200 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 text-slate-900 font-semibold text-sm rounded-lg py-2 pl-3 pr-9 appearance-none cursor-pointer shadow-xs">
+                  <option value="JUN-26">JUN-26 (Audited)</option>
+                  <option value="JUL-26">JUL-26 (Filed)</option>
+                  <option selected="" value="AUG-26">AUG-26 (Execution Active)</option>
+                  <option value="SEP-26">SEP-26 (Drafting)</option>
+                </select>
+                <span class="material-symbols-outlined absolute right-2.5 top-2.5 text-slate-400 pointer-events-none text-[18px]">expand_more</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div>
+                <label class="block text-xs text-slate-500 mb-1 uppercase font-bold">From Date</label>
+                <div class="flex items-center bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus-within:border-blue-600 shadow-xs">
+                  <span class="material-symbols-outlined text-slate-400 text-[16px] mr-1.5">calendar_month</span>
+                  <input id="input-from-date" class="bg-transparent border-0 p-0 text-slate-900 font-mono text-sm focus:ring-0 w-24" type="text" value="01-08-2026"/>
+                </div>
+              </div>
+              <span class="text-slate-400 mt-5 font-bold">to</span>
+              <div>
+                <label class="block text-xs text-slate-500 mb-1 uppercase font-bold">To Date</label>
+                <div class="flex items-center bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus-within:border-blue-600 shadow-xs">
+                  <span class="material-symbols-outlined text-slate-400 text-[16px] mr-1.5">calendar_month</span>
+                  <input id="input-to-date" class="bg-transparent border-0 p-0 text-slate-900 font-mono text-sm focus:ring-0 w-24" type="text" value="31-08-2026"/>
+                </div>
+              </div>
+            </div>
+            <div class="mt-4 xl:mt-0 xl:self-end">
+              <div class="px-3.5 py-2 rounded-lg bg-blue-50 border border-blue-200 flex items-center gap-2 text-blue-700 font-mono text-xs font-semibold shadow-xs">
+                <span class="material-symbols-outlined text-[16px]">receipt</span>
+                <strong class="font-bold">1,428 Vouchers</strong> Ready for Ingestion
+              </div>
+            </div>
+          </div>
+          
+          <div class="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-end">
+            <button class="btn-open-extractor px-3.5 py-2 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs">
+              <span class="material-symbols-outlined text-[16px]">folder_zip</span>
+              <span>Ingest Backup Archive</span>
+            </button>
+            <button class="btn-resync-ledger px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs">
+              <span class="material-symbols-outlined text-[16px]">refresh</span>
+              <span>Re-Sync Ledger</span>
+            </button>
+            <button class="btn-launch-tally px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs">
+              <span class="material-symbols-outlined text-[16px]">settings_ethernet</span>
+              <span>Launch Tally Config</span>
+            </button>
+            <button class="btn-download-xlsx px-3.5 py-2 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs">
+              <span class="material-symbols-outlined text-[16px]">download</span>
+              <span>Download .xlsx</span>
+            </button>
+            <button class="btn-generate-gstr1 px-5 py-2 rounded-xl bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-600 text-white font-bold shadow-md shadow-blue-500/25 hover:shadow-blue-500/40 hover:brightness-105 active:scale-[0.98] transition-all duration-150 flex items-center gap-2 text-sm">
+              <span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">bolt</span>
+              <span>Generate GSTR-1 Excel File</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Split View: Terminal Logs & Return Mappings -->
+        <section class="grid grid-cols-1 xl:grid-cols-12 gap-5 pb-6">
+          <div class="xl:col-span-6 rounded-2xl bg-white border border-slate-200 overflow-hidden flex flex-col shadow-card">
+            <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-red-400"></span>
+                <span class="w-3 h-3 rounded-full bg-amber-400"></span>
+                <span class="w-3 h-3 rounded-full bg-emerald-400"></span>
+                <span class="ml-2 font-mono text-xs text-slate-600 font-semibold">tally-gst-audit-engine [stdout]</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-xs text-emerald-700 font-bold flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span> STREAMING
+                </span>
+              </div>
+            </div>
+            <div class="p-4 font-mono text-xs leading-relaxed overflow-y-auto max-h-[340px] terminal-scrollbar space-y-2 bg-[#0b1329] text-slate-300 rounded-b-2xl">
+              <div class="flex items-start gap-2">
+                <span class="text-slate-500 select-none">[10:42:01.018]</span>
+                <span class="text-sky-400 font-semibold">INFO</span>
+                <span>Connecting to Tally ODBC localhost:9000... <span class="text-emerald-400 font-bold">Authenticated</span>.</span>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="text-slate-500 select-none">[10:42:01.240]</span>
+                <span class="text-sky-400 font-semibold">INFO</span>
+                <span>Scanning Company Database: <span class="text-white font-bold">'SUN BUILDERS PROJECTS LLP' (010010)</span></span>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="text-slate-500 select-none">[10:42:02.112]</span>
+                <span class="text-emerald-400 font-semibold">EXEC</span>
+                <span>Fetched 1,428 receipt vouchers for date period 01-Aug-2026 to 31-Aug-2026.</span>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="text-slate-500 select-none">[10:42:02.580]</span>
+                <span class="text-amber-400 font-semibold">RULE</span>
+                <span>Applying BU Cutoff date 18/03/2025 on Sun Footprint: <span class="text-emerald-400 font-bold">218 receipts flagged exempt</span> (Schedule III).</span>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="text-slate-500 select-none">[10:42:03.015]</span>
+                <span class="text-amber-400 font-semibold">RULE</span>
+                <span>Excluding Maintenance and Stamp Duty ledger accounts... <span class="text-sky-400 font-bold">₹3,45,10,000 contra-adjusted</span>.</span>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="text-slate-500 select-none">[10:42:03.490]</span>
+                <span class="text-sky-400 font-semibold">INFO</span>
+                <span>Calculating 1/3rd Land Abatement for Commercial units in Sun Gravitas... Effective tax evaluated @ 12.00%.</span>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="text-slate-500 select-none">[10:42:04.120]</span>
+                <span class="text-emerald-400 font-semibold">SUCCESS</span>
+                <span>Formatting Table 4 (B2B), Table 7 (B2C Others), Table 11 (Advances Received)...</span>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="text-slate-500 select-none">[10:42:04.890]</span>
+                <span class="text-emerald-400 font-bold">READY</span>
+                <span class="text-emerald-300">GSTR-1 JSON Schema validated against GSTN v3.1 standard without mismatch errors.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="xl:col-span-6 glass-panel rounded-2xl p-6 border border-slate-200 flex flex-col justify-between shadow-card bg-white">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-blue-600 text-[22px]">fact_check</span>
+                <h2 class="font-display text-base font-extrabold text-slate-900">Statutory GSTR-1 Return Mappings (AUG-26)</h2>
+              </div>
+              <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+                Ready for Offline Tool
+              </span>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 my-4">
+              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between shadow-xs hover:border-blue-300 transition-all">
+                <div class="flex items-start justify-between">
+                  <div>
+                    <span class="font-mono text-xs text-slate-500 font-bold">TABLE 4</span>
+                    <div class="text-sm font-bold text-slate-900">Taxable B2B Supplies</div>
+                  </div>
+                  <span class="material-symbols-outlined text-blue-600 text-[20px]">business</span>
+                </div>
+                <div class="mt-3 pt-2.5 border-t border-slate-200/80 flex items-baseline justify-between font-mono">
+                  <div>
+                    <div class="text-[11px] text-slate-500 font-medium">Taxable Value</div>
+                    <div class="text-xs font-bold text-slate-900">₹3,20,50,000</div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-[11px] text-slate-500 font-medium">Tax Liability</div>
+                    <div class="text-xs font-extrabold text-blue-600">₹38,46,000</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between shadow-xs hover:border-blue-300 transition-all">
+                <div class="flex items-start justify-between">
+                  <div>
+                    <span class="font-mono text-xs text-slate-500 font-bold">TABLE 7</span>
+                    <div class="text-sm font-bold text-slate-900">B2C Others (All Projects)</div>
+                  </div>
+                  <span class="material-symbols-outlined text-blue-600 text-[20px]">group</span>
+                </div>
+                <div class="mt-3 pt-2.5 border-t border-slate-200/80 flex items-baseline justify-between font-mono">
+                  <div>
+                    <div class="text-[11px] text-slate-500 font-medium">Taxable Value</div>
+                    <div class="text-xs font-bold text-slate-900">₹45,71,10,000</div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-[11px] text-slate-500 font-medium">Tax Liability</div>
+                    <div class="text-xs font-extrabold text-blue-600">₹2,60,22,500</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between shadow-xs hover:border-amber-300 transition-all">
+                <div class="flex items-start justify-between">
+                  <div>
+                    <span class="font-mono text-xs text-slate-500 font-bold">TABLE 11</span>
+                    <div class="text-sm font-bold text-slate-900">Advances Received / Adjusted</div>
+                  </div>
+                  <span class="material-symbols-outlined text-amber-600 text-[20px]">payments</span>
+                </div>
+                <div class="mt-3 pt-2.5 border-t border-slate-200/80 flex items-baseline justify-between font-mono">
+                  <div>
+                    <div class="text-[11px] text-slate-500 font-medium">Gross Unadjusted</div>
+                    <div class="text-xs font-bold text-slate-900">₹7,85,00,000</div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-[11px] text-slate-500 font-medium">Net Advance Tax</div>
+                    <div class="text-xs font-extrabold text-amber-600">₹42,15,000</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 flex flex-col justify-between shadow-xs">
+                <div class="flex items-start justify-between">
+                  <div>
+                    <span class="font-mono text-xs text-emerald-700 font-extrabold">FINAL LIABILITY</span>
+                    <div class="text-sm font-bold text-slate-900">Total Output Tax (AUG-26)</div>
+                  </div>
+                  <span class="material-symbols-outlined text-emerald-600 text-[22px]">account_balance_wallet</span>
+                </div>
+                <div class="mt-2.5 pt-2 border-t border-emerald-200 flex items-baseline justify-between font-mono">
+                  <div>
+                    <div class="text-[11px] text-slate-600">Consolidated</div>
+                    <div class="text-xs text-emerald-700 font-bold">3B Match: 100%</div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-xl font-extrabold text-emerald-600">₹3,40,83,500</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-2 flex items-center justify-between">
+              <span class="text-xs text-slate-500 font-medium flex items-center gap-1">
+                <span class="material-symbols-outlined text-[16px] text-emerald-600">shield</span>
+                CA Sign-off Hash: <span class="font-mono text-slate-800 font-bold">8f3a9e22cb01</span>
+              </span>
+              <button class="btn-download-xlsx px-3.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold flex items-center gap-1 transition-colors">
+                <span>View Full Form GSTR-1 Draft</span>
+                <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 2: PROJECTS LEDGER                                                -->
+      <!-- ===================================================================== -->
+      <div id="tab-projects" class="tab-pane hidden flex flex-col gap-6">
+        <section class="glass-panel rounded-2xl overflow-hidden border border-slate-200 shadow-card bg-white flex flex-col">
+          <div class="px-6 py-4 bg-white border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs">
+                <span class="material-symbols-outlined text-[22px]">account_tree</span>
+              </div>
+              <div>
+                <h2 class="font-display text-lg font-extrabold text-slate-900">Active Project Portfolios &amp; Taxable Assessment</h2>
+                <p class="text-xs text-slate-500 font-medium">Real Estate project-wise GSTR-1 preparation ledger with automatic BU cutoff and exclusion breakdowns</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="relative">
+                <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-[16px]">search</span>
+                <input id="project-search-input" class="bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl pl-8 pr-3 py-2 focus:border-blue-600 focus:bg-white w-56 placeholder:text-slate-400 shadow-xs font-medium" placeholder="Filter project or RERA code..." type="text"/>
+              </div>
+              <button id="btn-projects-tab-open-bu" onclick="window.openBuModal && window.openBuModal()" type="button" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer">
+                <span class="material-symbols-outlined text-[16px]">edit_calendar</span>
+                <span>Configure Project BU Dates</span>
+              </button>
+              <button class="btn-download-xlsx p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors shadow-xs" title="Export Excel Report">
+                <span class="material-symbols-outlined text-[18px]">download</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto table-scrollbar">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 text-slate-600 border-b border-slate-200 font-mono text-xs uppercase tracking-wider font-semibold">
+                  <th class="py-3 px-4 sticky left-0 bg-slate-50 z-10 text-slate-700">Project Name &amp; Code</th>
+                  <th class="py-3 px-4">Property Type</th>
+                  <th class="py-3 px-4">BU Status</th>
+                  <th class="py-3 px-3 text-right">Units</th>
+                  <th class="py-3 px-4 text-right">Gross Receipts (₹)</th>
+                  <th class="py-3 px-4 text-right">Non-GST Deductions (₹)</th>
+                  <th class="py-3 px-4 text-right text-emerald-700">Exempt Post-BU (₹)</th>
+                  <th class="py-3 px-4 text-right text-blue-700 font-bold">Net Taxable Value (₹)</th>
+                  <th class="py-3 px-3 text-center">Eff. Rate</th>
+                  <th class="py-3 px-4 text-right text-slate-900 font-bold">Output GST (₹)</th>
+                </tr>
+              </thead>
+              <tbody id="project-table-body" class="divide-y divide-slate-100 text-xs font-medium text-slate-700">
+                <!-- Row 1: Sun Footprint (BU Cutoff Hero) -->
+                <tr class="hover:bg-blue-50/40 transition-colors group">
+                  <td class="py-3 px-4 text-slate-900 sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 border-r border-slate-100">
+                    <div class="font-display text-sm font-bold text-blue-700">Sun Footprint</div>
+                    <div class="font-mono text-[11px] text-slate-500">PRJ-01001 • RERA: PR/GJ/AHM/091</div>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="px-2.5 py-0.5 rounded-md text-xs bg-slate-100 text-slate-700 border border-slate-200 font-medium">Mixed Dev</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <div class="flex items-center gap-1.5">
+                      <span id="proj-bu-badge-010010" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+                        <span class="material-symbols-outlined text-[11px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+                        Obtained 18/03/2025
+                      </span>
+                      <button class="btn-quick-edit-bu p-1 rounded hover:bg-amber-100 text-amber-700 transition-colors" data-code="010010" title="Edit BU Date for Sun Footprint">
+                        <span class="material-symbols-outlined text-[15px]">edit_calendar</span>
+                      </button>
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right font-mono text-slate-800">99</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-900 font-semibold">18,45,20,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-500">82,10,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-emerald-700 font-bold bg-emerald-50/50">14,82,00,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-blue-700 font-bold bg-blue-50/50">2,81,10,000</td>
+                  <td class="py-3 px-3 text-center font-mono font-bold text-blue-700">5%</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-900 font-bold">14,05,500</td>
+                </tr>
+                <!-- Row 2: Sun Park West -->
+                <tr class="hover:bg-blue-50/40 transition-colors group">
+                  <td class="py-3 px-4 text-slate-900 sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 border-r border-slate-100">
+                    <div class="font-display text-sm font-bold text-slate-900">Sun Park West</div>
+                    <div class="font-mono text-[11px] text-slate-500">PRJ-01002 • RERA: PR/GJ/AHM/114</div>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="px-2.5 py-0.5 rounded-md text-xs bg-slate-100 text-slate-700 border border-slate-200 font-medium">Residential &gt; 45L</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <div class="flex items-center gap-1.5">
+                      <span id="proj-bu-badge-010011" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 shadow-xs">
+                        <span class="material-symbols-outlined text-[11px]">pending</span>
+                        Under Construction
+                      </span>
+                      <button class="btn-quick-edit-bu p-1 rounded hover:bg-amber-100 text-amber-700 transition-colors" data-code="010011" title="Edit BU Date for Sun Park West">
+                        <span class="material-symbols-outlined text-[15px]">edit_calendar</span>
+                      </button>
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right font-mono text-slate-800">56</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-900 font-semibold">9,20,50,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-500">45,20,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-400">0</td>
+                  <td class="py-3 px-4 text-right font-mono text-blue-700 font-bold bg-blue-50/50">8,75,30,000</td>
+                  <td class="py-3 px-3 text-center font-mono font-bold text-blue-700">5%</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-900 font-bold">43,76,500</td>
+                </tr>
+                <!-- Row 3: Sun Atmosphere (Affordable 1%) -->
+                <tr class="hover:bg-blue-50/40 transition-colors group">
+                  <td class="py-3 px-4 text-slate-900 sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 border-r border-slate-100">
+                    <div class="font-display text-sm font-bold text-slate-900">Sun Atmosphere</div>
+                    <div class="font-mono text-[11px] text-slate-500">PRJ-010000 • RERA: PR/GJ/GND/302</div>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="px-2.5 py-0.5 rounded-md text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">Resi ≤ 45L Affordable</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <div class="flex items-center gap-1.5">
+                      <span id="proj-bu-badge-010000" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+                        <span class="material-symbols-outlined text-[11px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+                        Obtained 07/03/2024
+                      </span>
+                      <button class="btn-quick-edit-bu p-1 rounded hover:bg-amber-100 text-amber-700 transition-colors" data-code="010000" title="Edit BU Date for Sun Atmosphere">
+                        <span class="material-symbols-outlined text-[15px]">edit_calendar</span>
+                      </button>
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right font-mono text-slate-800">258</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-900 font-semibold">11,16,24,647</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-500">4,40,26,330</td>
+                  <td class="py-3 px-4 text-right font-mono text-emerald-700 font-bold bg-emerald-50/50">6,75,98,317</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-400">0</td>
+                  <td class="py-3 px-3 text-center font-mono font-bold text-emerald-700">0% (Exempt)</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-900 font-bold">0</td>
+                </tr>
+                <!-- Row 4: Sun Gravitas Commercial (12% Eff) -->
+                <tr class="hover:bg-blue-50/40 transition-colors group">
+                  <td class="py-3 px-4 text-slate-900 sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 border-r border-slate-100">
+                    <div class="font-display text-sm font-bold text-amber-800">Sun Gravitas Commercial</div>
+                    <div class="font-mono text-[11px] text-slate-500">PRJ-01004 • RERA: PR/GJ/AHM/415</div>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="px-2.5 py-0.5 rounded-md text-xs bg-slate-100 text-slate-700 border border-slate-200 font-medium">Standalone Commercial</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <div class="flex items-center gap-1.5">
+                      <span id="proj-bu-badge-010013" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 shadow-xs">
+                        <span class="material-symbols-outlined text-[11px]">pending</span>
+                        Under Construction
+                      </span>
+                      <button class="btn-quick-edit-bu p-1 rounded hover:bg-amber-100 text-amber-700 transition-colors" data-code="010013" title="Edit BU Date for Sun Gravitas">
+                        <span class="material-symbols-outlined text-[15px]">edit_calendar</span>
+                      </button>
+                    </div>
+                  </td>
+                  <td class="py-3 px-3 text-right font-mono text-slate-800">42</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-900 font-semibold">15,60,00,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-500">94,50,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-400">0</td>
+                  <td class="py-3 px-4 text-right font-mono text-blue-700 font-bold bg-blue-50/50">14,65,50,000</td>
+                  <td class="py-3 px-3 text-center font-mono font-bold text-amber-800">12% Eff.</td>
+                  <td class="py-3 px-4 text-right font-mono text-amber-800 font-bold">1,75,86,000</td>
+                </tr>
+                <!-- Row 5: Sun Silver Spring -->
+                <tr class="hover:bg-blue-50/40 transition-colors group">
+                  <td class="py-3 px-4 text-slate-900 sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 border-r border-slate-100">
+                    <div class="font-display text-sm font-bold text-slate-900">Sun Silver Spring</div>
+                    <div class="font-mono text-[11px] text-slate-500">PRJ-01005 • RERA: PR/GJ/AHM/522</div>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="px-2.5 py-0.5 rounded-md text-xs bg-slate-100 text-slate-700 border border-slate-200 font-medium">Residential &gt; 45L</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 shadow-xs">
+                      <span class="material-symbols-outlined text-[11px]">pending</span>
+                      Under Construction
+                    </span>
+                  </td>
+                  <td class="py-3 px-3 text-right font-mono text-slate-800">84</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-900 font-semibold">11,10,00,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-500">52,30,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-400">0</td>
+                  <td class="py-3 px-4 text-right font-mono text-blue-700 font-bold bg-blue-50/50">10,57,70,000</td>
+                  <td class="py-3 px-3 text-center font-mono font-bold text-blue-700">5%</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-900 font-bold">52,88,500</td>
+                </tr>
+                <!-- Row 6: Lekhambha Land Development -->
+                <tr class="hover:bg-blue-50/40 transition-colors group">
+                  <td class="py-3 px-4 text-slate-900 sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 border-r border-slate-100">
+                    <div class="font-display text-sm font-bold text-slate-900">Lekhambha Land Development</div>
+                    <div class="font-mono text-[11px] text-slate-500">PRJ-01006 • Plotted Joint Venture</div>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="px-2.5 py-0.5 rounded-md text-xs bg-slate-100 text-slate-700 border border-slate-200 font-medium">Plotting / Joint Dev</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+                      <span class="material-symbols-outlined text-[11px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+                      Plot Sale Exempt
+                    </span>
+                  </td>
+                  <td class="py-3 px-3 text-right font-mono text-slate-800">35</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-900 font-semibold">4,50,00,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-500">18,00,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-emerald-700 font-bold bg-emerald-50/50">4,32,00,000</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-400">0</td>
+                  <td class="py-3 px-3 text-center font-mono text-slate-400 font-bold">0% Nil</td>
+                  <td class="py-3 px-4 text-right font-mono text-slate-400 font-bold">0</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="bg-slate-50 border-t-2 border-blue-600 font-mono font-bold text-slate-900">
+                  <td class="py-3.5 px-4 sticky left-0 bg-slate-50 z-10 font-sans text-sm text-slate-900 font-bold">
+                    PORTFOLIO AGGREGATE (AUG-26)
+                  </td>
+                  <td class="py-3.5 px-4 font-sans text-xs text-slate-500 font-semibold">6 Active Projects</td>
+                  <td class="py-3.5 px-4 text-xs text-emerald-700 font-sans font-bold">1 Statutory BU Exempt</td>
+                  <td class="py-3.5 px-3 text-right text-slate-800">436</td>
+                  <td class="py-3.5 px-4 text-right text-slate-900">₹71,65,70,000</td>
+                  <td class="py-3.5 px-4 text-right text-slate-500">₹3,60,10,000</td>
+                  <td class="py-3.5 px-4 text-right text-emerald-700 font-bold">₹19,14,00,000</td>
+                  <td class="py-3.5 px-4 text-right text-blue-700 text-sm font-bold">₹48,91,60,000</td>
+                  <td class="py-3.5 px-3 text-center text-slate-400">—</td>
+                  <td class="py-3.5 px-4 text-right text-emerald-700 text-sm font-bold">₹2,98,68,500</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 3: VOUCHER INGESTION                                              -->
+      <!-- ===================================================================== -->
+      <div id="tab-vouchers" class="tab-pane hidden flex flex-col gap-6">
+        <section class="glass-panel rounded-2xl p-6 border border-slate-200 shadow-card bg-white">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs">
+                <span class="material-symbols-outlined text-[24px]">receipt_long</span>
+              </div>
+              <div>
+                <h2 class="font-display text-lg font-extrabold text-slate-900">Tally Voucher Ingestion &amp; Classification Console</h2>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <p id="vouchers-header-desc" class="text-xs text-slate-500 font-medium">Live streaming &amp; offline ledger vouchers extracted from Company 010010 (96MB Database)</p>
+                  <span id="sync-source-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1 font-semibold">
+                    <span class="material-symbols-outlined text-[13px]">cloud_done</span>
+                    <span id="sync-source-text">Local Tally Agent Connected</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btn-open-sync-modal" class="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs">
+                <span class="material-symbols-outlined text-[16px]">cloud_sync</span>
+                <span>Local Tally Agent</span>
+              </button>
+              <button class="btn-resync-ledger px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-xs">
+                <span class="material-symbols-outlined text-[16px]">sync</span>
+                <span>Scan Live Tally (Port 9000)</span>
+              </button>
+              <button class="btn-generate-gstr1 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-700 to-blue-600 text-white font-bold text-xs flex items-center gap-1.5 hover:brightness-105 shadow-md shadow-blue-500/20">
+                <span class="material-symbols-outlined text-[16px]">bolt</span>
+                <span>Compile GSTR-1 From Vouchers</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Drag & Drop Backup Ingestion Banner -->
+          <div class="mt-4 p-5 rounded-2xl bg-gradient-to-r from-blue-50/80 via-slate-50 to-indigo-50/80 border border-blue-200 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-blue-100/70 border border-blue-200 flex items-center justify-center text-blue-700 flex-shrink-0 shadow-xs">
+                <span class="material-symbols-outlined text-[26px]">drive_folder_upload</span>
+              </div>
+              <div>
+                <div class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                  <span>Ingest Another Sun Builders Project Backup</span>
+                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold">.ZIP / .RAR Ready</span>
+                </div>
+                <p class="text-xs text-slate-600 mt-0.5">Drop or browse any company backup archive (e.g. 010011.zip, Sun_Atmosphere.rar). The engine unpacks and mounts company data automatically.</p>
+              </div>
+            </div>
+            <button class="btn-open-extractor px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-2 flex-shrink-0 shadow-md shadow-blue-500/25 transition-all active:scale-[0.98]">
+              <span class="material-symbols-outlined text-[18px]">upload_file</span>
+              <span>Ingest Backup Archive</span>
+            </button>
+          </div>
+
+          <!-- Ingestion Metrics Strip -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 my-4">
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
+              <div id="vouchers-metric-title-total" class="text-xs text-slate-500 font-semibold">Active Project Vouchers</div>
+              <div id="vouchers-metric-total" class="text-2xl font-extrabold font-mono text-slate-900 mt-1">96 Vouchers</div>
+              <div id="vouchers-metric-sub-total" class="text-[11px] text-emerald-700 font-mono mt-1 font-semibold">✓ Active Daybook Rows</div>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
+              <div id="vouchers-metric-title-exempt" class="text-xs text-slate-500 font-semibold">Post-BU Exemption</div>
+              <div id="vouchers-metric-exempt" class="text-2xl font-extrabold font-mono text-emerald-600 mt-1">₹8.46 Cr</div>
+              <div id="vouchers-metric-sub-exempt" class="text-[11px] text-emerald-700 font-mono mt-1 font-semibold">BU Cutoff Status</div>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
+              <div id="vouchers-metric-title-deductions" class="text-xs text-slate-500 font-semibold">Non-GST Ancillary Deductions</div>
+              <div id="vouchers-metric-exclusions" class="text-2xl font-extrabold font-mono text-blue-600 mt-1">₹1.41 Cr</div>
+              <div id="vouchers-metric-sub-deductions" class="text-[11px] text-blue-600 font-mono mt-1 font-semibold">Stamp Duty / Reg Pass-Through</div>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
+              <div id="vouchers-metric-title-taxable" class="text-xs text-slate-500 font-semibold">Net Taxable Member Base</div>
+              <div id="vouchers-metric-taxable" class="text-2xl font-extrabold font-mono text-slate-900 mt-1">₹2.79 Cr</div>
+              <div id="vouchers-metric-sub-taxable" class="text-[11px] text-slate-500 font-mono mt-1 font-semibold">Output GST Liability</div>
+            </div>
+          </div>
+
+          <!-- Voucher Search & Project Selector Filter -->
+          <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 mb-3">
+            <div class="flex flex-wrap items-center gap-2.5 flex-1">
+              <!-- Project Selector Dropdown -->
+              <div class="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2 shadow-xs">
+                <span class="material-symbols-outlined text-blue-700 text-[18px]">apartment</span>
+                <span class="text-xs font-bold text-slate-600">Project:</span>
+                <select id="select-voucher-project" class="bg-transparent border-0 p-0 text-xs font-bold text-blue-900 font-sans focus:ring-0 cursor-pointer">
+                  <option value="010000" selected class="bg-white text-slate-800">🏢 Sun Atmosphere (010000) — 258 Vouchers [1% Affordable]</option>
+                  <option value="010010" class="bg-white text-slate-800">🏢 Sun Footprint (010010) — 96 Vouchers [1% Affordable]</option>
+                  <option value="010011" class="bg-white text-slate-800">🏢 Sun Park West (010011) — 52 Vouchers [5% Standard]</option>
+                  <option value="010002" class="bg-white text-slate-800">🏢 Sun Silver Spring (010002) — [5% Standard]</option>
+                  <option value="010009" class="bg-white text-slate-800">🏢 Sun Gravitas Commercial (010009) — [18% / 12% Abated]</option>
+                  <option value="010015" class="bg-white text-slate-800">🏢 Lekhambha (010015) — [Plotted Development]</option>
+                </select>
+              </div>
+
+              <!-- BU Date Entry Button -->
+              <button id="btn-open-bu-modal" onclick="window.openBuModal && window.openBuModal()" type="button" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer">
+                <span class="material-symbols-outlined text-[16px]">edit_calendar</span>
+                <span>Set BU Permission Date</span>
+              </button>
+
+              <!-- Search Input -->
+              <div class="relative w-full max-w-xs">
+                <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-[16px]">search</span>
+                <input id="voucher-search-input" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl pl-8 pr-3 py-2 focus:border-blue-600 focus:bg-white shadow-xs font-medium" placeholder="Search by Voucher No, Buyer Name, Flat..." type="text"/>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 text-xs text-slate-500 font-mono">
+              <span id="active-company-badge" class="px-3 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold shadow-xs">Company: 010010 Loaded</span>
+              <span class="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-medium">Period: AUG-26</span>
+            </div>
+          </div>
+
+          <!-- Ingested Vouchers Table -->
+          <div class="overflow-x-auto table-scrollbar rounded-xl border border-slate-200">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 text-slate-600 border-b border-slate-200 font-mono uppercase tracking-wider font-semibold">
+                  <th class="py-2.5 px-3">Date</th>
+                  <th class="py-2.5 px-3">Vch No</th>
+                  <th class="py-2.5 px-3 text-primary font-bold">Flat / Unit No</th>
+                  <th class="py-2.5 px-4">Account / Member Name</th>
+                  <th class="py-2.5 px-3">Project</th>
+                  <th class="py-2.5 px-3">Type</th>
+                  <th class="py-2.5 px-3 text-right">Amount (₹)</th>
+                  <th class="py-2.5 px-4">Statutory GST Classification</th>
+                </tr>
+              </thead>
+              <tbody id="voucher-table-body" class="divide-y divide-outline-variant/30 font-mono">
+                <tr class="hover:bg-primary/5 transition-colors">
+                  <td class="py-2.5 px-3 text-on-surface">25-08-2026</td>
+                  <td class="py-2.5 px-3 text-primary font-semibold">VCH-0821</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Receipt</td>
+                  <td class="py-2.5 px-4 font-sans text-on-surface font-medium">Rajesh K. Patel</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Sun Footprint • Flat 402</td>
+                  <td class="py-2.5 px-3 text-right text-on-surface font-semibold">15,00,000</td>
+                  <td class="py-2.5 px-4 font-sans">
+                    <span class="px-2 py-0.5 rounded text-xs bg-secondary/10 text-secondary border border-secondary/30 font-medium">
+                      Exempt Post-BU (Payment after 18/03/2025)
+                    </span>
+                  </td>
+                </tr>
+                <tr class="hover:bg-primary/5 transition-colors">
+                  <td class="py-2.5 px-3 text-on-surface">18-08-2026</td>
+                  <td class="py-2.5 px-3 text-primary font-semibold">VCH-0845</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Receipt</td>
+                  <td class="py-2.5 px-4 font-sans text-on-surface font-medium">Amit Shah</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Sun Park West • Flat 501</td>
+                  <td class="py-2.5 px-3 text-right text-on-surface font-semibold">2,50,000</td>
+                  <td class="py-2.5 px-4 font-sans">
+                    <span class="px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/30 font-medium">
+                      Non-GST Excluded (Maintenance Deposit)
+                    </span>
+                  </td>
+                </tr>
+                <tr class="hover:bg-primary/5 transition-colors">
+                  <td class="py-2.5 px-3 text-on-surface">14-08-2026</td>
+                  <td class="py-2.5 px-3 text-primary font-semibold">VCH-0899</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Receipt</td>
+                  <td class="py-2.5 px-4 font-sans text-on-surface font-medium">Mehul V. Joshi</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Sun Atmosphere • Flat 204</td>
+                  <td class="py-2.5 px-3 text-right text-on-surface font-semibold">8,00,000</td>
+                  <td class="py-2.5 px-4 font-sans">
+                    <span class="px-2 py-0.5 rounded text-xs bg-secondary/10 text-secondary border border-secondary/30 font-medium">
+                      Taxable @ 1% (Affordable ≤ 45L)
+                    </span>
+                  </td>
+                </tr>
+                <tr class="hover:bg-primary/5 transition-colors">
+                  <td class="py-2.5 px-3 text-on-surface">20-08-2026</td>
+                  <td class="py-2.5 px-3 text-primary font-semibold">VCH-0925</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Receipt</td>
+                  <td class="py-2.5 px-4 font-sans text-on-surface font-medium">Apex Trading LLP</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Sun Gravitas • Office 302</td>
+                  <td class="py-2.5 px-3 text-right text-on-surface font-semibold">25,00,000</td>
+                  <td class="py-2.5 px-4 font-sans">
+                    <span class="px-2 py-0.5 rounded text-xs bg-tertiary/10 text-tertiary border border-tertiary/30 font-medium">
+                      Taxable @ 12% Eff. (Commercial + 1/3 Land Abatement)
+                    </span>
+                  </td>
+                </tr>
+                <tr class="hover:bg-primary/5 transition-colors">
+                  <td class="py-2.5 px-3 text-on-surface">22-08-2026</td>
+                  <td class="py-2.5 px-3 text-primary font-semibold">VCH-0940</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Receipt</td>
+                  <td class="py-2.5 px-4 font-sans text-on-surface font-medium">Dhaval R. Mehta</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Sun Footprint • Flat 305</td>
+                  <td class="py-2.5 px-3 text-right text-on-surface font-semibold">1,20,000</td>
+                  <td class="py-2.5 px-4 font-sans">
+                    <span class="px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/30 font-medium">
+                      Non-GST Excluded (Stamp Duty &amp; Registration)
+                    </span>
+                  </td>
+                </tr>
+                <tr class="hover:bg-primary/5 transition-colors">
+                  <td class="py-2.5 px-3 text-on-surface">27-08-2026</td>
+                  <td class="py-2.5 px-3 text-primary font-semibold">VCH-0965</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Receipt</td>
+                  <td class="py-2.5 px-4 font-sans text-on-surface font-medium">Ketan Parikh</td>
+                  <td class="py-2.5 px-3 text-on-surface-variant">Sun Atmosphere • Flat 108</td>
+                  <td class="py-2.5 px-3 text-right text-on-surface font-semibold">75,000</td>
+                  <td class="py-2.5 px-4 font-sans">
+                    <span class="px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/30 font-medium">
+                      Non-GST Excluded (Electricity Exp / Torrent Power)
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 4: ITC RECONCILER                                                 -->
+      <!-- ===================================================================== -->
+      <div id="tab-itc" class="tab-pane hidden flex flex-col gap-6">
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div class="glass-panel rounded-xl p-5 border border-outline-variant">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="material-symbols-outlined text-error text-[22px]">block</span>
+              <h3 class="font-display font-bold text-on-surface text-base">Section 17(5) ITC Restriction</h3>
+            </div>
+            <p class="text-xs text-on-surface-variant leading-relaxed mb-3">
+              Under Notification 03/2019-CT(R), residential real estate projects taxed at 1% and 5% are <strong>STRICTLY PROHIBITED</strong> from claiming Input Tax Credit on goods and services.
+            </p>
+            <div class="p-3 rounded-lg bg-surface-container-lowest border border-outline-variant font-mono">
+              <div class="text-xs text-on-surface-variant">Auto-Reversed to Project Cost</div>
+              <div class="text-xl font-bold text-error mt-0.5">₹1,84,30,000</div>
+              <div class="text-[11px] text-secondary mt-1">Capitalized under AS-7 / Ind AS 115</div>
+            </div>
+          </div>
+
+          <div class="glass-panel rounded-xl p-5 border border-outline-variant">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="material-symbols-outlined text-tertiary text-[22px]">gavel</span>
+              <h3 class="font-display font-bold text-on-surface text-base">Reverse Charge Mechanism (RCM)</h3>
+            </div>
+            <p class="text-xs text-on-surface-variant leading-relaxed mb-3">
+              Mandatory tax liability payable in cash under Section 9(3) and 9(4) (80% minimum procurement rule from registered vendors).
+            </p>
+            <div class="space-y-1.5 text-xs font-mono">
+              <div class="flex justify-between p-1.5 rounded bg-surface-container">
+                <span class="text-on-surface font-sans">Legal Advocates Fees (18%)</span>
+                <span class="text-primary font-bold">₹1,45,000</span>
+              </div>
+              <div class="flex justify-between p-1.5 rounded bg-surface-container">
+                <span class="text-on-surface font-sans">Security Services (18%)</span>
+                <span class="text-primary font-bold">₹3,20,000</span>
+              </div>
+              <div class="flex justify-between p-1.5 rounded bg-surface-container">
+                <span class="text-on-surface font-sans">Goods Transport Agency (GTA 5%)</span>
+                <span class="text-primary font-bold">₹85,000</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="glass-panel rounded-xl p-5 border border-outline-variant">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="material-symbols-outlined text-secondary text-[22px]">domain</span>
+              <h3 class="font-display font-bold text-on-surface text-base">Commercial ITC Apportionment</h3>
+            </div>
+            <p class="text-xs text-on-surface-variant leading-relaxed mb-3">
+              Sun Gravitas is a Standalone Commercial project taxed under the 18% regime (effective 12% after 1/3rd land abatement), eligible for proportionate input tax credits.
+            </p>
+            <div class="p-3 rounded-lg bg-surface-container-lowest border border-outline-variant font-mono">
+              <div class="text-xs text-on-surface-variant">Eligible Commercial ITC</div>
+              <div class="text-xl font-bold text-secondary mt-0.5">₹48,90,000</div>
+              <div class="text-[11px] text-on-surface-variant mt-1">Rule 42/43 Apportionment Verified</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2B Reconciliation Table -->
+        <section class="glass-panel rounded-xl p-5 border border-outline-variant">
+          <h3 class="font-display font-bold text-on-surface text-base mb-3">GSTR-2B vs Books Purchase Ledger Audit</h3>
+          <div class="overflow-x-auto table-scrollbar rounded-lg border border-outline-variant">
+            <table class="w-full text-left border-collapse text-xs font-mono">
+              <thead>
+                <tr class="bg-surface-container-lowest text-outline border-b border-outline-variant uppercase">
+                  <th class="py-2.5 px-3">Category</th>
+                  <th class="py-2.5 px-3 text-right">Invoices</th>
+                  <th class="py-2.5 px-4 text-right">Taxable Value (₹)</th>
+                  <th class="py-2.5 px-4 text-right">CGST (₹)</th>
+                  <th class="py-2.5 px-4 text-right">SGST (₹)</th>
+                  <th class="py-2.5 px-4 text-right">Total Tax (₹)</th>
+                  <th class="py-2.5 px-4">Action</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-outline-variant/30">
+                <tr class="hover:bg-primary/5">
+                  <td class="py-2.5 px-3 font-sans text-on-surface font-medium">Matched 2B Invoices (Cement &amp; Steel)</td>
+                  <td class="py-2.5 px-3 text-right text-on-surface">342</td>
+                  <td class="py-2.5 px-4 text-right">14,20,50,000</td>
+                  <td class="py-2.5 px-4 text-right">1,98,87,000</td>
+                  <td class="py-2.5 px-4 text-right">1,98,87,000</td>
+                  <td class="py-2.5 px-4 text-right text-primary font-bold">3,97,74,000</td>
+                  <td class="py-2.5 px-4 font-sans text-secondary font-medium">Auto-Reversed (Residential)</td>
+                </tr>
+                <tr class="hover:bg-primary/5">
+                  <td class="py-2.5 px-3 font-sans text-on-surface font-medium">Commercial Eligible (Sun Gravitas)</td>
+                  <td class="py-2.5 px-3 text-right text-on-surface">48</td>
+                  <td class="py-2.5 px-4 text-right">2,71,66,667</td>
+                  <td class="py-2.5 px-4 text-right">24,45,000</td>
+                  <td class="py-2.5 px-4 text-right">24,45,000</td>
+                  <td class="py-2.5 px-4 text-right text-secondary font-bold">48,90,000</td>
+                  <td class="py-2.5 px-4 font-sans text-secondary font-medium">Claimable in 3B</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 5: GSTR-1 & 3B RETURNS                                            -->
+      <!-- ===================================================================== -->
+      <div id="tab-returns" class="tab-pane hidden flex flex-col gap-6">
+        <section class="glass-panel rounded-xl p-5 border border-outline-variant shadow-xl">
+          <div class="flex items-center justify-between pb-4 border-b border-outline-variant">
+            <div>
+              <h2 class="font-display text-lg font-bold text-on-surface">Statutory GSTR-1 Return Mappings &amp; Excel Hub</h2>
+              <p class="text-xs text-on-surface-variant">Prepared exactly according to CA office master template with intact mathematical formulas</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="btn-generate-gstr1 px-5 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-sky-400 text-white font-bold text-xs flex items-center gap-2 shadow-lg hover:brightness-110">
+                <span class="material-symbols-outlined text-[18px]">bolt</span>
+                <span>Generate Official Workbook</span>
+              </button>
+              <button class="btn-download-xlsx px-4 py-2 rounded-lg bg-surface-container border border-primary/40 text-primary text-xs font-medium flex items-center gap-1.5 hover:bg-surface-container-high">
+                <span class="material-symbols-outlined text-[16px]">download</span>
+                <span>Download .xlsx File</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-5">
+            <div class="p-4 rounded-xl bg-surface-container border border-outline-variant">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-mono text-xs font-bold text-primary">TABLE 4: B2B INVOICES</span>
+                <span class="text-xs text-secondary font-mono">100% Reconciled</span>
+              </div>
+              <p class="text-xs text-on-surface-variant mb-3">Supplies made to GSTIN-registered entities (Commercial offices &amp; registered buyers).</p>
+              <div class="flex justify-between items-baseline font-mono border-t border-outline-variant/60 pt-2">
+                <div>
+                  <div class="text-[11px] text-on-surface-variant">Taxable Value</div>
+                  <div class="text-sm font-bold text-on-surface">₹3,20,50,000</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[11px] text-on-surface-variant">Total Tax (CGST+SGST)</div>
+                  <div class="text-sm font-bold text-primary">₹38,46,000</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-xl bg-surface-container border border-outline-variant">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-mono text-xs font-bold text-primary">TABLE 7: B2C OTHERS</span>
+                <span class="text-xs text-secondary font-mono">100% Reconciled</span>
+              </div>
+              <p class="text-xs text-on-surface-variant mb-3">Residential flat buyers, intra-state net of 5 non-GST exclusion categories.</p>
+              <div class="flex justify-between items-baseline font-mono border-t border-outline-variant/60 pt-2">
+                <div>
+                  <div class="text-[11px] text-on-surface-variant">Taxable Value</div>
+                  <div class="text-sm font-bold text-on-surface">₹45,71,10,000</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[11px] text-on-surface-variant">Total Tax (CGST+SGST)</div>
+                  <div class="text-sm font-bold text-primary">₹2,60,22,500</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-xl bg-surface-container border border-outline-variant">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-mono text-xs font-bold text-secondary">TABLE 8: NIL RATED &amp; EXEMPT SUPPLIES</span>
+                <span class="text-xs text-secondary font-mono">Schedule III</span>
+              </div>
+              <p class="text-xs text-on-surface-variant mb-3">Sun Footprint receipts strictly after 18/03/2025 (₹14.82 Cr) + Lekhambha Plotting (₹4.32 Cr).</p>
+              <div class="flex justify-between items-baseline font-mono border-t border-outline-variant/60 pt-2">
+                <div>
+                  <div class="text-[11px] text-on-surface-variant">Total Exempt Consideration</div>
+                  <div class="text-sm font-bold text-secondary">₹19,14,00,000</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[11px] text-on-surface-variant">Tax Liability</div>
+                  <div class="text-sm font-bold text-secondary">₹0 (Nil Exempt)</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-xl bg-surface-container border border-outline-variant">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-mono text-xs font-bold text-tertiary">TABLE 11: ADVANCES RECEIVED / ADJUSTED</span>
+                <span class="text-xs text-tertiary font-mono">Sec 31(3)(d)</span>
+              </div>
+              <p class="text-xs text-on-surface-variant mb-3">Advances received before completion/BU permission, subject to advance tax calculation.</p>
+              <div class="flex justify-between items-baseline font-mono border-t border-outline-variant/60 pt-2">
+                <div>
+                  <div class="text-[11px] text-on-surface-variant">Gross Unadjusted Advances</div>
+                  <div class="text-sm font-bold text-on-surface">₹7,85,00,000</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[11px] text-on-surface-variant">Advance Tax Evaluated</div>
+                  <div class="text-sm font-bold text-tertiary">₹42,15,000</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 6: AUDIT INSPECTION                                               -->
+      <!-- ===================================================================== -->
+      <div id="tab-audit" class="tab-pane hidden flex flex-col gap-6">
+        <section class="glass-panel rounded-xl p-5 border border-outline-variant">
+          <div class="flex items-center justify-between pb-4 border-b border-outline-variant mb-4">
+            <div>
+              <h2 class="font-display text-lg font-bold text-on-surface">CA Audit Inspection &amp; Compliance Trail</h2>
+              <p class="text-xs text-on-surface-variant">Automated verification against Real Estate GST statutory provisions</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-secondary/10 text-secondary border border-secondary/30 text-xs font-bold font-mono">
+              AUDIT STATUS: PASSED
+            </span>
+          </div>
+
+          <div class="space-y-3 mb-6">
+            <div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
+              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+              <div class="flex-1 text-xs">
+                <strong class="text-on-surface font-semibold">Sun Footprint BU Cutoff Verification:</strong>
+                <span class="text-on-surface-variant"> BU permission dated 18/03/2025 verified. 218 member advances received after 18th March 2025 flagged as 100% exempt from GST under Schedule III Entry 5.</span>
+              </div>
+              <span class="font-mono text-secondary font-bold text-xs">VERIFIED</span>
+            </div>
+
+            <div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
+              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+              <div class="flex-1 text-xs">
+                <strong class="text-on-surface font-semibold">5 Ancillary Non-GST Exclusions Audit:</strong>
+                <span class="text-on-surface-variant"> ₹3,45,10,000 in Refundable Deposits, Stamp Duty, Registration, Maintenance, and Electricity expenses contra-adjusted before calculating taxable value.</span>
+              </div>
+              <span class="font-mono text-secondary font-bold text-xs">VERIFIED</span>
+            </div>
+
+            <div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
+              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+              <div class="flex-1 text-xs">
+                <strong class="text-on-surface font-semibold">Affordable Housing 45 Lakhs Threshold:</strong>
+                <span class="text-on-surface-variant"> Unit-wise verification executed. Units with consideration ≤ 45 Lakhs taxed strictly at 1% GST without ITC.</span>
+              </div>
+              <span class="font-mono text-secondary font-bold text-xs">VERIFIED</span>
+            </div>
+
+            <div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
+              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+              <div class="flex-1 text-xs">
+                <strong class="text-on-surface font-semibold">Commercial 1/3rd Land Abatement Formula:</strong>
+                <span class="text-on-surface-variant"> Formula (=B8/3) verified on Sun Gravitas Standalone Commercial sheets, ensuring effective tax of 12.00%.</span>
+              </div>
+              <span class="font-mono text-secondary font-bold text-xs">VERIFIED</span>
+            </div>
+          </div>
+
+          <!-- Audit Console Stream -->
+          <div class="rounded-xl bg-surface-container-lowest border border-outline-variant overflow-hidden">
+            <div class="px-4 py-2 bg-surface-dim border-b border-outline-variant flex justify-between items-center text-xs font-mono text-on-surface-variant">
+              <span>Audit Execution Log Stream</span>
+              <span class="text-secondary font-semibold">Live</span>
+            </div>
+            <div class="p-4 font-mono text-xs leading-relaxed max-h-[250px] overflow-y-auto terminal-scrollbar space-y-1.5 text-on-surface-variant">
+              <div class="text-primary">[AUDIT] Commencing statutory reconciliation for Sun Builders Projects LLP...</div>
+              <div class="text-secondary">[AUDIT] Match rate against CA Excel template: 100.0% across all 23 sheets.</div>
+              <div class="text-tertiary">[AUDIT] BU cutoff verified with AMC/Competent Authority certificate record.</div>
+              <div class="text-secondary">[AUDIT] Ready for final partner review and GSTR-1 JSON export.</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 7: REGULATORY RULES                                               -->
+      <!-- ===================================================================== -->
+      <div id="tab-rules" class="tab-pane hidden flex flex-col gap-6">
+        <section class="glass-panel rounded-xl p-6 border border-outline-variant">
+          <h2 class="font-display text-xl font-bold text-on-surface mb-2">Real Estate GST Statutory Rules &amp; CA Directives</h2>
+          <p class="text-xs text-on-surface-variant mb-6">Authoritative real estate statutory rules codified into the automation engine for Sun Builders Projects LLP</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div class="p-5 rounded-xl bg-surface-container border border-outline-variant">
+              <div class="flex items-center gap-2 text-secondary font-bold font-display text-base mb-2">
+                <span class="material-symbols-outlined text-[20px]">calendar_today</span>
+                <span>1. Pre-BU vs Post-BU Exemption Cutoff</span>
+              </div>
+              <div class="text-xs text-on-surface-variant leading-relaxed space-y-2">
+                <p><strong>Legal Authority:</strong> Schedule III, Entry 5 of the CGST Act, 2017 (Sale of Land and Completed Building).</p>
+                <p><strong>CA Directive:</strong> For <strong>Sun Footprint</strong>, BU (Building Use / Completion) permission was granted as on <strong>18/03/2025</strong>.</p>
+                <p class="p-2.5 rounded bg-surface-container-lowest border border-outline-variant font-mono text-[11px] text-secondary">
+                  Advances/collections received AFTER 18/03/2025 = 100% EXEMPT from GST.<br/>
+                  Advances/collections received BEFORE 18/03/2025 = TAXABLE (1% / 5%).
+                </p>
+              </div>
+            </div>
+
+            <div class="p-5 rounded-xl bg-surface-container border border-outline-variant">
+              <div class="flex items-center gap-2 text-primary font-bold font-display text-base mb-2">
+                <span class="material-symbols-outlined text-[20px]">filter_alt</span>
+                <span>2. 5 Mandatory Non-GST Deductions</span>
+              </div>
+              <div class="text-xs text-on-surface-variant leading-relaxed space-y-2">
+                <p><strong>Legal Authority:</strong> Rule 33 of CGST Rules (Pure Agent) &amp; Section 15 Valuation Rules.</p>
+                <p>GST is strictly <strong>NOT</strong> calculated on:</p>
+                <ul class="list-disc pl-5 space-y-1 font-mono text-[11px] text-on-surface">
+                  <li><strong>Refundable Security Deposit</strong> (Not consideration for construction)</li>
+                  <li><strong>Stamp Duty (Cr/Dr)</strong> (Pure agent statutory fee reimbursement)</li>
+                  <li><strong>Sub-Registrar Registration (Cr/Dr)</strong> (Pure agent payment)</li>
+                  <li><strong>Maintenance Deposit / Expenses</strong> (Held in trust for society)</li>
+                  <li><strong>Electricity Expenses</strong> (AEC / AUDA / Torrent actual cost reimbursement)</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="p-5 rounded-xl bg-surface-container border border-outline-variant">
+              <div class="flex items-center gap-2 text-tertiary font-bold font-display text-base mb-2">
+                <span class="material-symbols-outlined text-[20px]">percent</span>
+                <span>3. Residential Rate Slabs (Affordable vs Others)</span>
+              </div>
+              <div class="text-xs text-on-surface-variant leading-relaxed space-y-2">
+                <p><strong>Legal Authority:</strong> Notification No. 03/2019-Central Tax (Rate).</p>
+                <ul class="space-y-1.5 font-mono text-[11px]">
+                  <li class="p-2 rounded bg-surface-container-lowest border border-outline-variant">
+                    <strong class="text-secondary font-sans">Affordable (≤ ₹45 Lakhs):</strong> 1% GST without ITC (Sun Atmosphere).
+                  </li>
+                  <li class="p-2 rounded bg-surface-container-lowest border border-outline-variant">
+                    <strong class="text-primary font-sans">Non-Affordable (&gt; ₹45 Lakhs):</strong> 5% GST without ITC (Sun Park West, Sun Silver Spring).
+                  </li>
+                  <li class="p-2 rounded bg-surface-container-lowest border border-outline-variant">
+                    <strong class="text-primary font-sans">Commercial Shops in RREP:</strong> 5% GST without ITC.
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="p-5 rounded-xl bg-surface-container border border-outline-variant">
+              <div class="flex items-center gap-2 text-tertiary font-bold font-display text-base mb-2">
+                <span class="material-symbols-outlined text-[20px]">store</span>
+                <span>4. Commercial Other &amp; 1/3rd Land Abatement</span>
+              </div>
+              <div class="text-xs text-on-surface-variant leading-relaxed space-y-2">
+                <p><strong>Legal Authority:</strong> Notification No. 11/2017-Central Tax (Rate) as amended.</p>
+                <p>For standalone commercial projects like <strong>Sun Gravitas Commercial</strong>, gross consideration is taxed at 18% with a mandatory <strong>1/3rd deduction for deemed value of land</strong>:</p>
+                <p class="p-2.5 rounded bg-surface-container-lowest border border-outline-variant font-mono text-[11px] text-tertiary">
+                  Taxable Value = Total Gross Consideration × (2/3)<br/>
+                  Formula: =B8/3 (Land Deduction) | Effective GST Rate = 12.00%
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 8: HELP & API                                                     -->
+      <!-- ===================================================================== -->
+      <div id="tab-help" class="tab-pane hidden flex flex-col gap-6">
+        <section class="glass-panel rounded-xl p-6 border border-outline-variant">
+          <h2 class="font-display text-xl font-bold text-on-surface mb-2">Help, Tally Integration &amp; REST API Guide</h2>
+          <p class="text-xs text-on-surface-variant mb-6">Complete manual for operating the Sun Builders GST Automation System</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div class="p-5 rounded-xl bg-surface-container border border-outline-variant">
+              <h3 class="font-display font-bold text-primary text-base mb-3 flex items-center gap-2">
+                <span class="material-symbols-outlined text-[20px]">laptop_windows</span>
+                <span>Tally Setup in Educational Mode (Free)</span>
+              </h3>
+              <ol class="list-decimal pl-5 space-y-2 text-xs text-on-surface-variant leading-relaxed">
+                <li>Double-click the installer: <code class="text-primary font-mono">downloads\setup_tally_7.1_gold.exe</code> or click <strong>Launch Tally Config</strong>.</li>
+                <li>When Tally opens, click <strong>Continue in Educational Mode</strong> (completely free, no license purchase needed).</li>
+                <li>Press <kbd class="px-1.5 py-0.5 rounded bg-surface-container-lowest border border-outline-variant font-mono text-on-surface">Alt + F3</kbd> &rarr; <strong>Select Company</strong>.</li>
+                <li>Set Company Path to: <code class="text-primary font-mono">c:\Project_AI\sun_builders\data</code></li>
+                <li>Select <strong>010010 (SUN BUILDERS PROJECTS LLP)</strong>.</li>
+                <li>Verify Port 9000 is active in Tally Settings.</li>
+              </ol>
+            </div>
+
+            <div class="p-5 rounded-xl bg-surface-container border border-outline-variant">
+              <h3 class="font-display font-bold text-secondary text-base mb-3 flex items-center gap-2">
+                <span class="material-symbols-outlined text-[20px]">api</span>
+                <span>Flask REST API Endpoints</span>
+              </h3>
+              <div class="space-y-2 text-xs font-mono">
+                <div class="p-2 rounded bg-surface-container-lowest border border-outline-variant">
+                  <span class="text-secondary font-bold">GET</span> /api/status
+                  <div class="text-[11px] text-on-surface-variant font-sans mt-0.5">Returns Tally connection status, port, and loaded companies.</div>
+                </div>
+                <div class="p-2 rounded bg-surface-container-lowest border border-outline-variant">
+                  <span class="text-primary font-bold">POST</span> /api/generate
+                  <div class="text-[11px] text-on-surface-variant font-sans mt-0.5">Generates the 23-sheet GSTR-1 Excel workbook for the requested month.</div>
+                </div>
+                <div class="p-2 rounded bg-surface-container-lowest border border-outline-variant">
+                  <span class="text-secondary font-bold">GET</span> /api/download/&lt;filename&gt;
+                  <div class="text-[11px] text-on-surface-variant font-sans mt-0.5">Downloads the generated Excel file.</div>
+                </div>
+                <div class="p-2 rounded bg-surface-container-lowest border border-outline-variant">
+                  <span class="text-tertiary font-bold">POST</span> /api/tally/setup
+                  <div class="text-[11px] text-on-surface-variant font-sans mt-0.5">Launches Tally or the official installer.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+  <!-- ========================================================================= -->
+  <!-- AESTHETIC TALLY BACKUP INGESTION MODAL & PROGRESS STUDIO                  -->
+  <!-- ========================================================================= -->
+  <div id="extractor-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden transition-all duration-300">
+    <div class="relative w-full max-w-xl p-6 rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden flex flex-col gap-5">
+      
+      <!-- Ambient Modal Glows -->
+      <div class="absolute -top-20 -right-20 w-44 h-44 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute -bottom-20 -left-20 w-44 h-44 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs flex-shrink-0">
+            <span class="material-symbols-outlined text-[24px]">folder_zip</span>
+          </div>
+          <div>
+            <h3 class="font-display font-bold text-lg text-slate-900">Tally Project Data Ingestion Studio</h3>
+            <p class="text-xs text-slate-500">Extract and mount any Sun Builders backup (.zip, .rar, or folder) automatically into Tally</p>
+          </div>
+        </div>
+        <button id="btn-close-extractor-modal" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs transition-colors">
+          <span class="material-symbols-outlined text-[20px]">close</span>
+        </button>
+      </div>
+
+      <!-- State 1: Upload / Input Form (Visible before extraction starts) -->
+      <div id="extractor-form-view" class="flex flex-col gap-4">
+        <!-- Interactive Drag & Drop Area -->
+        <div id="dropzone-area" class="border-2 border-dashed border-blue-200 hover:border-blue-500 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-blue-50/40 hover:bg-blue-50/70 transition-all text-center group">
+          <input type="file" id="file-input-backup" class="hidden" accept=".zip,.rar,.7z"/>
+          <div class="w-12 h-12 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+            <span class="material-symbols-outlined text-[26px]">cloud_upload</span>
+          </div>
+          <div>
+            <span class="text-sm font-semibold text-slate-800">Click to Browse or Drag &amp; Drop Backup File</span>
+            <p class="text-xs text-slate-500 mt-0.5">Supports Sun Builders Tally backups: <code class="text-blue-700 font-mono font-semibold">.ZIP</code>, <code class="text-blue-700 font-mono font-semibold">.RAR</code>, <code class="text-blue-700 font-mono font-semibold">.7Z</code></p>
+          </div>
+          <span id="selected-file-name" class="hidden text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-300 mt-1"></span>
+        </div>
+
+        <!-- OR Divider -->
+        <div class="flex items-center gap-3 text-xs text-slate-300 font-mono">
+          <div class="flex-1 h-px bg-slate-200"></div>
+          <span class="text-slate-400 font-semibold text-[11px]">OR ENTER FILE PATH ON PC</span>
+          <div class="flex-1 h-px bg-slate-200"></div>
+        </div>
+
+        <!-- Direct Path Input -->
+        <div class="flex flex-col gap-1.5">
+          <div class="flex items-center justify-between">
+            <label class="text-xs text-slate-700 font-medium">Local Path to Backup Archive:</label>
+            <button type="button" id="btn-quick-fill-existing" class="text-[11px] font-mono text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 font-semibold">
+              <span class="material-symbols-outlined text-[13px]">bolt</span>
+              <span>Use existing: 010010.rar</span>
+            </button>
+          </div>
+          <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus-within:border-blue-500 focus-within:bg-white transition-colors">
+            <span class="material-symbols-outlined text-slate-400 text-[18px]">folder_open</span>
+            <input id="input-backup-path" type="text" value="C:\naman_ca\Sun_Builders\010010.rar" placeholder="e.g. C:\naman_ca\Sun_Builders\010010.rar" class="bg-transparent border-0 p-0 text-xs text-slate-800 font-mono focus:ring-0 w-full placeholder:text-slate-400"/>
+          </div>
+        </div>
+
+        <!-- Optional Railway Cloud Destination URL -->
+        <div class="flex flex-col gap-1.5">
+          <div class="flex items-center justify-between">
+            <label class="text-xs text-slate-700 font-medium flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[15px] text-emerald-600">cloud_upload</span>
+              <span>Railway Cloud Destination URL (Optional):</span>
+            </label>
+            <span class="text-[10px] text-emerald-700 font-mono font-medium">Bypasses manual terminal sync</span>
+          </div>
+          <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus-within:border-emerald-500 focus-within:bg-white transition-colors">
+            <span class="material-symbols-outlined text-slate-400 text-[18px]">public</span>
+            <input id="input-railway-target-url" type="text" placeholder="e.g. https://sun-builders.up.railway.app (Leave empty for local only)" class="bg-transparent border-0 p-0 text-xs text-slate-800 font-mono focus:ring-0 w-full placeholder:text-slate-400"/>
+          </div>
+        </div>
+
+        <!-- Action Button -->
+        <button id="btn-start-extract" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-700 to-indigo-600 hover:from-blue-800 hover:to-indigo-700 text-white font-bold text-sm shadow-md shadow-blue-500/25 active:scale-[0.99] transition-all flex items-center justify-center gap-2">
+          <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
+          <span>Start Automated Ingestion &amp; Cloud Sync</span>
+        </button>
+      </div>
+
+      <!-- State 2: Live Aesthetic Progress & Tally Background Loader -->
+      <div id="extractor-progress-view" class="hidden flex flex-col gap-5 py-2">
+        
+        <!-- Animated Glowing Tech Spinner & Status -->
+        <div class="flex items-center gap-4 p-4 rounded-xl bg-surface-container border border-outline-variant">
+          <div class="relative w-12 h-12 flex items-center justify-center flex-shrink-0">
+            <!-- Pulsing Rings -->
+            <div id="spinner-pulse" class="absolute inset-0 rounded-full border-2 border-primary/40 animate-ping"></div>
+            <div id="spinner-circle" class="w-10 h-10 rounded-full border-2 border-t-primary border-r-transparent border-b-secondary border-l-transparent animate-spin"></div>
+            <span id="spinner-icon" class="material-symbols-outlined text-primary text-[20px] absolute">sync</span>
+          </div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <span id="progress-phase-title" class="font-display font-bold text-sm text-on-surface">Extracting &amp; Mounting Tally Data...</span>
+              <span id="progress-percentage" class="font-mono text-xs font-bold text-secondary">0%</span>
+            </div>
+            <p id="progress-phase-desc" class="text-xs text-on-surface-variant mt-0.5 font-mono">Initiating decompression thread...</p>
+          </div>
+        </div>
+
+        <!-- Animated Progress Bar with Glow -->
+        <div class="w-full h-2.5 rounded-full bg-surface-container-lowest overflow-hidden border border-outline-variant p-[1px]">
+          <div id="progress-bar-fill" class="h-full rounded-full bg-gradient-to-r from-blue-600 via-primary to-secondary transition-all duration-300 w-0 shadow-sm shadow-secondary/50"></div>
+        </div>
+
+        <!-- Step-by-Step Live Audit Checklist -->
+        <div class="space-y-2 text-xs font-mono">
+          <div id="step-1" class="flex items-center gap-2.5 text-on-surface-variant p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
+            <span class="material-symbols-outlined text-[16px] text-outline step-icon">radio_button_unchecked</span>
+            <span class="flex-1">1. Unpack compressed archive streams (.zip/.rar)</span>
+            <span class="text-[10px] step-status text-outline">WAITING</span>
+          </div>
+          <div id="step-2" class="flex items-center gap-2.5 text-on-surface-variant p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
+            <span class="material-symbols-outlined text-[16px] text-outline step-icon">radio_button_unchecked</span>
+            <span class="flex-1">2. Scan numeric Tally company folder (TranMgr.1800, Company)</span>
+            <span class="text-[10px] step-status text-outline">WAITING</span>
+          </div>
+          <div id="step-3" class="flex items-center gap-2.5 text-on-surface-variant p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
+            <span class="material-symbols-outlined text-[16px] text-outline step-icon">radio_button_unchecked</span>
+            <span class="flex-1">3. Mount company files into project data directory</span>
+            <span class="text-[10px] step-status text-outline">WAITING</span>
+          </div>
+          <div id="step-4" class="flex items-center gap-2.5 text-on-surface-variant p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
+            <span class="material-symbols-outlined text-[16px] text-outline step-icon">radio_button_unchecked</span>
+            <span class="flex-1">4. Link background Tally XML / ODBC server (Port 9000)</span>
+            <span class="text-[10px] step-status text-outline">WAITING</span>
+          </div>
+          <div id="step-5" class="flex items-center gap-2.5 text-on-surface-variant p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
+            <span class="material-symbols-outlined text-[16px] text-outline step-icon">radio_button_unchecked</span>
+            <span class="flex-1">5. Transmit &amp; Sync Vouchers to Railway Cloud</span>
+            <span class="text-[10px] step-status text-outline">WAITING</span>
+          </div>
+        </div>
+
+        <!-- Success Result Card (Hidden until complete) -->
+        <div id="extraction-result-card" class="hidden p-4 rounded-xl bg-secondary/10 border border-secondary/40 flex flex-col gap-3">
+          <div class="flex items-center gap-2.5 text-secondary font-bold text-sm">
+            <span class="material-symbols-outlined text-[20px]">check_circle</span>
+            <span id="extraction-result-heading">Tally Company Successfully Ingested!</span>
+          </div>
+          <div id="extraction-result-details" class="text-xs text-on-surface-variant font-mono space-y-1">
+            <!-- Dynamically populated -->
+          </div>
+          <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-secondary/20">
+            <a id="link-open-railway" href="#" target="_blank" class="hidden flex-1 py-2 px-3 rounded-lg bg-gradient-to-r from-blue-600 to-primary text-on-primary font-bold text-xs flex items-center justify-center gap-1.5 hover:brightness-110 transition-all shadow-md">
+              <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+              <span>Open on Railway Cloud</span>
+            </a>
+            <button id="btn-view-ingested-vouchers" class="flex-1 py-2 px-3 rounded-lg bg-secondary text-on-secondary font-bold text-xs flex items-center justify-center gap-1.5 hover:brightness-110 transition-all">
+              <span class="material-symbols-outlined text-[16px]">receipt_long</span>
+              <span>View Local Vouchers &amp; GSTR-1</span>
+            </button>
+            <button id="btn-close-and-refresh" class="py-2 px-3 rounded-lg bg-surface-container border border-outline-variant text-on-surface text-xs font-medium hover:bg-surface-container-high transition-all">
+              Done
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Local Tally to Railway Cloud Sync Agent Info -->
+  <div id="sync-agent-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden transition-all duration-300">
+    <div class="relative w-full max-w-lg p-6 rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden flex flex-col gap-4">
+      
+      <!-- Ambient Glow -->
+      <div class="absolute -top-20 -right-20 w-44 h-44 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      <!-- Header -->
+      <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-xs flex-shrink-0">
+            <span class="material-symbols-outlined text-[24px]">cloud_sync</span>
+          </div>
+          <div>
+            <h3 class="font-display font-bold text-lg text-slate-900">Local Tally Cloud Sync Agent</h3>
+            <p class="text-xs text-slate-500">Syncs any local Tally project data directly to your Railway cloud app</p>
+          </div>
+        </div>
+        <button id="btn-close-sync-modal" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs transition-colors">
+          <span class="material-symbols-outlined text-[20px]">close</span>
+        </button>
+      </div>
+
+      <!-- Instructions List -->
+      <div class="flex flex-col gap-3 text-xs text-slate-600">
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-3">
+          <span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[11px] flex-shrink-0 mt-0.5">1</span>
+          <div>
+            <div class="font-semibold text-slate-900">Open Tally on your Local Windows PC</div>
+            <p class="text-[11px] text-slate-500 mt-0.5">Open Tally 7.1 or Tally Prime in Education Mode. Load your desired company (e.g. 010010, Sun Atmosphere).</p>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-3">
+          <span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[11px] flex-shrink-0 mt-0.5">2</span>
+          <div class="w-full">
+            <div class="font-semibold text-slate-900">Run the Sync Agent (Double Click or Terminal)</div>
+            <p class="text-[11px] text-slate-500 mt-0.5 mb-2">Double click <code class="text-emerald-700 font-mono font-semibold">run_local_sync.bat</code> in the project directory, or run:</p>
+            <div class="p-2 rounded-lg bg-slate-100 border border-slate-200 font-mono text-[11px] text-blue-700 flex items-center justify-between">
+              <span id="sync-command-text">python tally_sync_agent.py</span>
+              <button id="btn-copy-sync-cmd" class="text-slate-600 hover:text-slate-900 text-[10px] font-sans px-2.5 py-1 rounded bg-white hover:bg-slate-50 border border-slate-200 transition-colors shadow-xs font-semibold">
+                Copy
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-start gap-3">
+          <span class="material-symbols-outlined text-emerald-600 text-[20px] flex-shrink-0">check_circle</span>
+          <div class="text-[11px] text-slate-800 leading-relaxed">
+            <strong>Automatic Ingestion:</strong> The agent reads all daybook vouchers directly from Port 9000, pushes them to Railway, and this dashboard refreshes automatically with complete GST calculations!
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-2 border-t border-slate-100 flex justify-end">
+        <button id="btn-close-sync-modal-footer" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs transition-colors">
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 10. Aesthetic BU Permission Date & Statutory Cutoff Manager Modal -->
+  <div id="bu-modal" style="display: none;" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden transition-all duration-300">
+    <div class="w-full max-w-2xl rounded-2xl border border-slate-200 shadow-2xl p-6 flex flex-col gap-5 bg-white max-h-[90vh] overflow-y-auto">
+      
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between pb-4 border-b border-slate-100">
+        <div class="flex items-center gap-3">
+          <div class="w-11 h-11 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shadow-xs">
+            <span class="material-symbols-outlined text-[24px]">calendar_month</span>
+          </div>
+          <div>
+            <h3 class="font-display text-lg font-bold text-slate-900">BU Permission Date &amp; Statutory Cutoff</h3>
+            <p class="text-xs text-slate-500 mt-0.5">Configure Building Use (BU) dates to claim 100% GST exemption under CGST Act Schedule III Entry 5</p>
+          </div>
+        </div>
+        <button id="btn-close-bu-modal" onclick="window.closeBuModal && window.closeBuModal()" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs transition-colors">
+          <span class="material-symbols-outlined text-[20px]">close</span>
+        </button>
+      </div>
+
+      <!-- Form Body -->
+      <form id="form-bu-settings" class="flex flex-col gap-4">
+        
+        <!-- Project Selector -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-800 mb-1.5">Select Real Estate Project</label>
+          <div class="relative">
+            <select id="bu-select-project" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 font-medium focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500 cursor-pointer transition-colors">
+              <option value="010000">🏢 Sun Atmosphere (010000) — Residential [1% Affordable]</option>
+              <option value="010010">🏢 Sun Footprint (010010) — Residential [1% Affordable]</option>
+              <option value="010011">🏢 Sun Park West (010011) — Residential [5% Standard]</option>
+              <option value="010009">🏢 Sun Gravitas Commercial (010009) — Commercial [18% / 12% Abated]</option>
+              <option value="010002">🏢 Sun Silver Spring (010002) — Residential [5% Standard]</option>
+              <option value="010015">🏢 Lekhambha (010015) — Plotted Development</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- BU Status Segmented Cards -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-800 mb-1.5">Statutory Completion / BU Status</label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            
+            <label class="relative flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:border-emerald-500 transition-all has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50">
+              <input type="radio" name="bu_status_radio" id="bu-radio-obtained" value="obtained" class="mt-0.5 text-emerald-600 focus:ring-emerald-500" checked>
+              <div>
+                <span class="block text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                  BU Permission Obtained
+                </span>
+                <span class="block text-[11px] text-slate-500 mt-0.5 leading-snug">
+                  Advances on or after BU date are 100% GST-Exempt (CGST Sch III)
+                </span>
+              </div>
+            </label>
+
+            <label class="relative flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:border-blue-500 transition-all has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+              <input type="radio" name="bu_status_radio" id="bu-radio-under-construction" value="under_construction" class="mt-0.5 text-blue-600 focus:ring-blue-500">
+              <div>
+                <span class="block text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+                  Under Construction (No BU)
+                </span>
+                <span class="block text-[11px] text-slate-500 mt-0.5 leading-snug">
+                  Pending BU certificate. All member receipts taxable at statutory rate.
+                </span>
+              </div>
+            </label>
+
+          </div>
+        </div>
+
+        <!-- Date & Certificate Details Section (Collapsible/Dynamic) -->
+        <div id="bu-details-section" class="flex flex-col gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            
+            <!-- BU Permission Date -->
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-800 mb-1 flex items-center gap-1">
+                <span>BU Permission / Cutoff Date</span>
+                <span class="text-amber-600 font-bold">*</span>
+              </label>
+              <input type="date" id="bu-input-date" value="2025-03-18" class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:border-amber-500 focus:ring-1 focus:ring-amber-500">
+              <span class="block text-[10px] text-slate-500 mt-1">Receipts dated on or after this date become Post-BU Exempt (0% GST).</span>
+            </div>
+
+            <!-- Pre-BU Statutory Rate -->
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-800 mb-1">Pre-BU Applicable GST Rate</label>
+              <select id="bu-input-rate" class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 cursor-pointer">
+                <option value="1%">1% (Affordable Residential ≤ 45L)</option>
+                <option value="5%">5% (Standard Residential > 45L)</option>
+                <option value="18%">18% Commercial (12% Effective with Land Abatement)</option>
+              </select>
+              <span class="block text-[10px] text-slate-500 mt-1">Applied to advances received prior to the BU date.</span>
+            </div>
+
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
+            <!-- Reference / Order Number -->
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-800 mb-1">BU Certificate / Order Reference No.</label>
+              <input type="text" id="bu-input-ref" placeholder="e.g. BU/2025/AMC/0189" value="BU/2025/AMC/0189" class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:border-amber-500 focus:ring-1 focus:ring-amber-500">
+            </div>
+
+            <!-- Approving Authority -->
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-800 mb-1">Sanctioning Local Authority</label>
+              <input type="text" id="bu-input-authority" placeholder="e.g. Ahmedabad Municipal Corporation (AMC)" value="Ahmedabad Municipal Corporation (AMC)" class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:border-amber-500 focus:ring-1 focus:ring-amber-500">
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-800 mb-1">Statutory Compliance Notes</label>
+            <input type="text" id="bu-input-notes" placeholder="e.g. BU Permission received on 18/03/2025. Advances received after 18th March 2025 are EXEMPT." value="BU Permission received on 18/03/2025. Advances received after 18th March 2025 are EXEMPT." class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:border-amber-500 focus:ring-1 focus:ring-amber-500">
+          </div>
+        </div>
+
+        <!-- Statutory Law Explainer & Preview -->
+        <div class="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-start gap-3">
+          <span class="material-symbols-outlined text-emerald-600 text-[20px] flex-shrink-0 mt-0.5">verified</span>
+          <div class="text-[11px] text-slate-800 leading-relaxed">
+            <span class="font-bold text-emerald-800">Statutory Legal Impact:</span>
+            <span id="bu-statutory-impact-text" class="text-slate-700">
+              Under Schedule III Entry 5 of the CGST Act, 2017, sale of building where entire consideration is received after issuance of completion certificate by the competent authority is treated neither as a supply of goods nor services. All vouchers will be dynamically reclassified.
+            </span>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+          <button type="button" id="btn-close-bu-modal-cancel" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs transition-colors">
+            Cancel
+          </button>
+          
+          <button type="button" id="btn-save-bu-settings" class="px-5 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition-all active:scale-[0.98]">
+            <span class="material-symbols-outlined text-[18px]">check_circle</span>
+            <span>Save &amp; Recalculate Vouchers</span>
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js?v=20261001_v9"></script>
+  <script>
+    // Immediate fallback: if user clicks before DOM fully ready
+    if (!window.openBuModal) {
+      window.openBuModal = function(code) {
+        var m = document.getElementById('bu-modal');
+        if (m) {
+          m.classList.remove('hidden');
+          m.style.display = 'flex';
+        }
+      };
+      window.closeBuModal = function() {
+        var m = document.getElementById('bu-modal');
+        if (m) {
+          m.classList.add('hidden');
+          m.style.display = 'none';
+        }
+      };
+    }
+  </script>
+</body>
+</html>

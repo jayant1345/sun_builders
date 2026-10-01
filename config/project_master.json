@@ -1,0 +1,171 @@
+{
+  "company_name": "SUN BUILDERS PROJECTS LLP",
+  "formerly_known_as": "SUN REALTY",
+  "company_code": "010010",
+  "threshold_affordable_inr": 4500000,
+  "projects": {
+    "SUN REALTY FOOTPRINT": {
+      "code": "010010",
+      "aliases": [
+        "010010",
+        "FOOTPRINT",
+        "SUN FOOTPRINT"
+      ],
+      "display_name": "Sun Footprint",
+      "type": "Residential (Affordable \u2264 45L)",
+      "mem_sheet": "SUN REALTY FOOTPRINT- MEMBERS",
+      "calc_sheet": "FOOTPRINT- CALCULATION",
+      "entries_sheet": "ENTRIES-FOOTPRINT",
+      "prefix": "FP",
+      "bu_permission_date": "2025-03-18",
+      "has_bu": true,
+      "bu_reference_no": "BU/2025/AMC/0189",
+      "authority": "Ahmedabad Municipal Corporation (AMC)",
+      "default_residential_rate": 0.01,
+      "higher_residential_rate": 0.05,
+      "commercial_rate": 0.05,
+      "notes": "BU Permission received on 18/03/2025. Advances received after 18th March 2025 are EXEMPT from GST."
+    },
+    "SUN PARK WEST": {
+      "code": "010011",
+      "aliases": [
+        "010011",
+        "PARK WEST",
+        "SUN PARK WEST"
+      ],
+      "display_name": "Sun Park West",
+      "type": "Residential > 45L",
+      "mem_sheet": "SUN PARK WEST- MEMBER COLL.",
+      "calc_sheet": "SUN PARK WEST",
+      "entries_sheet": "ENTRIES-SUN PARK WEST",
+      "prefix": "SPW",
+      "bu_permission_date": null,
+      "has_bu": false,
+      "bu_reference_no": "BU/AMC/TEST/01",
+      "authority": "AUDA / AMC",
+      "default_residential_rate": 0.05,
+      "higher_residential_rate": 0.05,
+      "commercial_rate": 0.05,
+      "notes": "Under Construction"
+    },
+    "SUN REALTY ATMOSPHERE": {
+      "code": "010000",
+      "aliases": [
+        "010000",
+        "010012",
+        "ATMOSPHERE",
+        "ATMOS"
+      ],
+      "display_name": "Sun Atmosphere",
+      "type": "Affordable Residential \u2264 45L",
+      "mem_sheet": "DATA",
+      "calc_sheet": "SUN REALTY ATMOS-CALC",
+      "entries_sheet": "ENTRIES-ATMOSPHERE",
+      "prefix": "ATM",
+      "bu_permission_date": "2024-03-07",
+      "has_bu": true,
+      "bu_reference_no": "BU/2024/AUDA/0712",
+      "authority": "AUDA / AMC",
+      "default_residential_rate": 0.01,
+      "higher_residential_rate": 0.05,
+      "commercial_rate": 0.05,
+      "plc_rate": 0.18,
+      "notes": "BU Permission received on 07/03/2024. Advances received after 7th March 2024 are EXEMPT from GST."
+    },
+    "SUN REALTY GRAVITAS": {
+      "code": "010009",
+      "aliases": [
+        "010009",
+        "010013",
+        "GRAVITAS"
+      ],
+      "display_name": "Sun Gravitas Commercial",
+      "type": "Standalone Commercial",
+      "mem_sheet": "SUN REALTY-MEM COLL",
+      "calc_sheet": "SUN REALTY-CALC",
+      "entries_sheet": "ENTRIES-SUN REALTY",
+      "prefix": "GRV",
+      "bu_permission_date": "2022-06-18",
+      "has_bu": true,
+      "bu_reference_no": "BU/2022/AMC/0341",
+      "authority": "AMC",
+      "commercial_rate": 0.18,
+      "land_abatement_fraction": 0.3333333333,
+      "notes": "Commercial offices with 1/3rd land abatement (Effective 12%)."
+    },
+    "SUN SILVER SPRING": {
+      "code": "010002",
+      "aliases": [
+        "010002",
+        "010014",
+        "SILVER SPRING"
+      ],
+      "display_name": "Sun Silver Spring",
+      "type": "Residential > 45L",
+      "mem_sheet": "SUN SILVER SPRING-MEMBER COLL",
+      "calc_sheet": "SUN SILVER SPRING",
+      "entries_sheet": "Entries- Sun Silver Springs",
+      "prefix": "SSS",
+      "bu_permission_date": null,
+      "has_bu": false,
+      "bu_reference_no": "",
+      "authority": "AUDA",
+      "default_residential_rate": 0.05,
+      "notes": "Premium residential."
+    },
+    "LEKHAMBHA": {
+      "code": "010015",
+      "display_name": "Lekhambha",
+      "type": "Plotted Development",
+      "mem_sheet": "LEKHAMBHA- Member coll",
+      "calc_sheet": "LEKHAMBHA",
+      "entries_sheet": null,
+      "prefix": "LKB",
+      "bu_permission_date": null,
+      "has_bu": false,
+      "bu_reference_no": "",
+      "authority": "AUDA / Panchayat",
+      "default_residential_rate": 0.05,
+      "notes": "Plotted development project."
+    }
+  },
+  "non_gst_exclusions": {
+    "refundable_deposit": [
+      "refundable deposit",
+      "refundable",
+      "security deposit",
+      "member deposit"
+    ],
+    "stamp_duty": [
+      "stamp duty",
+      "stamp",
+      "duty",
+      "stamp duty / jv",
+      "stampduty"
+    ],
+    "registration": [
+      "registration",
+      "reg fee",
+      "reg. fee",
+      "reg fees",
+      "sub registrar"
+    ],
+    "maintenance_deposit": [
+      "maintenance deposit",
+      "maintanance deposit",
+      "maintenance expence",
+      "maintenance",
+      "maintanance"
+    ],
+    "electricity_exp": [
+      "electricity",
+      "electricity exp",
+      "electric",
+      "electric exp",
+      "aec",
+      "auda",
+      "torrent",
+      "meter"
+    ]
+  }
+}

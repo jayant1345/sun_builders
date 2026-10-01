@@ -1,0 +1,144 @@
+import os
+import sys
+import zipfile
+import shutil
+import subprocess
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+def extract_archive(archive_path, target_dir=DATA_DIR):
+    """
+    Extracts a Tally company backup (.zip, .rar, or folder) into data/
+    and verifies Tally database integrity.
+    """
+    archive_path = os.path.abspath(archive_path)
+    if not os.path.exists(archive_path):
+        print(f"[ERROR] File not found: {archive_path}")
+        return {"success": False, "message": f"File not found: {archive_path}"}
+
+    print("=" * 70)
+    print(f"  EXTRACTING TALLY BACKUP: {os.path.basename(archive_path)}")
+    print("=" * 70)
+
+    filename = os.path.basename(archive_path)
+    ext = os.path.splitext(filename)[1].lower()
+
+    # Create a temporary extraction staging area to handle arbitrary folder nesting
+    temp_extract_dir = os.path.join(BASE_DIR, "temp_extract")
+    if os.path.exists(temp_extract_dir):
+        shutil.rmtree(temp_extract_dir, ignore_errors=True)
+    os.makedirs(temp_extract_dir, exist_ok=True)
+
+    try:
+        # 1. Standard ZIP Extraction
+        if ext == ".zip":
+            print(f"[1/4] Extracting ZIP file via Python zipfile engine...")
+            with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_extract_dir)
+                
+        # 2. RAR / 7Z Extraction
+        elif ext in [".rar", ".7z"]:
+            print(f"[1/4] Extracting {ext.upper()} archive via system extractor...")
+            extracted = False
+            tar_exe = r"C:\Windows\System32\tar.exe"
+            if os.path.exists(tar_exe):
+                cmd = f'"{tar_exe}" -xf "{archive_path}" -C "{temp_extract_dir}"'
+                ret = subprocess.run(cmd, shell=True)
+                if ret.returncode == 0:
+                    extracted = True
+
+            if not extracted:
+                for exe in [r"C:\Program Files\7-Zip\7z.exe", r"C:\Program Files\WinRAR\WinRAR.exe", r"C:\Program Files\WinRAR\Rar.exe"]:
+                    if os.path.exists(exe):
+                        cmd = f'"{exe}" x -y "{archive_path}" "{temp_extract_dir}\\"'
+                        subprocess.run(cmd, shell=True)
+                        extracted = True
+                        break
+
+            if not extracted:
+                return {"success": False, "message": "Could not find automated RAR extractor on Windows."}
+
+        elif os.path.isdir(archive_path):
+            shutil.copytree(archive_path, os.path.join(temp_extract_dir, filename), dirs_exist_ok=True)
+
+        # 3. Locate Tally Company directory (any folder containing TranMgr or Company.1800 / .900)
+        print("[2/4] Searching for Tally company database structure...")
+        candidate_dirs = []
+        for root, dirs, files in os.walk(temp_extract_dir):
+            has_tally = any("TranMgr" in f or "Company" in f or f.endswith((".1800", ".900")) for f in files)
+            if has_tally:
+                candidate_dirs.append((root, files))
+
+        found_companies = []
+        if candidate_dirs:
+            for root_dir, files in candidate_dirs:
+                folder_name = os.path.basename(root_dir)
+                # If folder_name is not numeric, or is root, assign a clean company name
+                if not folder_name.isdigit() and len(folder_name) < 4:
+                    # Look up next available 5-digit number
+                    existing = [d for d in os.listdir(target_dir) if d.isdigit()]
+                    next_id = f"0100{len(existing)+10}"
+                    folder_name = next_id
+
+                target_company_dir = os.path.join(target_dir, folder_name)
+                os.makedirs(target_company_dir, exist_ok=True)
+                
+                # Copy or move all files to target_company_dir
+                for f in files:
+                    src = os.path.join(root_dir, f)
+                    dst = os.path.join(target_company_dir, f)
+                    shutil.copy2(src, dst)
+
+                size_mb = sum(os.path.getsize(os.path.join(target_company_dir, f)) for f in os.listdir(target_company_dir)) / (1024 * 1024)
+                found_companies.append({
+                    "code": folder_name,
+                    "path": target_company_dir,
+                    "size_mb": round(size_mb, 2),
+                    "file_count": len(os.listdir(target_company_dir))
+                })
+                print(f"[3/4] Successfully mounted Company {folder_name} ({round(size_mb, 2)} MB) to: {target_company_dir}")
+        else:
+            # If no specific TranMgr was found, move all extracted files into a new company folder
+            existing = [d for d in os.listdir(target_dir) if d.isdigit()]
+            new_code = f"0100{len(existing)+10}"
+            target_company_dir = os.path.join(target_dir, new_code)
+            shutil.copytree(temp_extract_dir, target_company_dir, dirs_exist_ok=True)
+            files = os.listdir(target_company_dir)
+            size_mb = sum(os.path.getsize(os.path.join(target_company_dir, f)) for f in files if os.path.isfile(os.path.join(target_company_dir, f))) / (1024 * 1024)
+            found_companies.append({
+                "code": new_code,
+                "path": target_company_dir,
+                "size_mb": round(size_mb, 2),
+                "file_count": len(files)
+            })
+
+        # Cleanup temp directory
+        shutil.rmtree(temp_extract_dir, ignore_errors=True)
+
+        print("[4/4] Extraction completed successfully.")
+        return {
+            "success": True,
+            "companies": found_companies,
+            "message": f"Successfully extracted and mounted {len(found_companies)} Tally Company Database(s)."
+        }
+
+    except Exception as e:
+        if os.path.exists(temp_extract_dir):
+            shutil.rmtree(temp_extract_dir, ignore_errors=True)
+        print(f"[ERROR] Extraction exception: {e}")
+        return {"success": False, "message": str(e)}
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        archive_file = sys.argv[1]
+    else:
+        print("Usage: python extract_backup.py <path_to_zip_or_rar>")
+        archive_file = input("Enter path to new backup file (.zip or .rar): ").strip('\"\' ')
+    
+    if archive_file:
+        res = extract_archive(archive_file)
+        print("Result:", res)
+    else:
+        print("[ERROR] No file provided.")

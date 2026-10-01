@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+venv/
+env/
+.venv/
+
+# Large installers and archives
+downloads/
+uploads/*.zip
+uploads/*.rar
+uploads/*.7z
+
+# Raw Tally database binary dumps (GitHub 100MB limit)
+data/**/*.1800
+data/**/*.TSF
+data/**/*.tsf
+*.1800
+*.TSF
+*.tsf
+
+# Temporary Excel lock files
+~$*.xlsx
+output/~$*.xlsx
+
+# Railway
+.railway/
