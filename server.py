@@ -237,6 +237,19 @@ def api_upload_backup():
             master["projects"] = proj_dict
             save_project_master(master)
 
+            # Auto-ingest any uploaded JSON sync files directly into DB
+            imported = res.get("imported_files", [])
+            for imp in imported:
+                if imp.endswith(".json") and imp.startswith("synced_"):
+                    try:
+                        with open(os.path.join(BASE_DIR, "data", imp), "r", encoding="utf-8") as jf:
+                            jdata = json.load(jf)
+                            vchs = jdata.get("vouchers", [])
+                            if vchs:
+                                db.save_vouchers(primary_code, vchs)
+                    except Exception as je:
+                        print("Error auto-loading JSON vouchers into DB:", je)
+
             return jsonify({
                 "status": "success",
                 "message": res.get("message"),

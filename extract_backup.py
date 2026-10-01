@@ -37,19 +37,47 @@ def extract_archive(archive_path, target_dir=DATA_DIR):
             print(f"[1/4] Extracting ZIP file via Python zipfile engine...")
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
                 zip_ref.extractall(temp_extract_dir)
-                
+
         # 2. RAR / 7Z Extraction
         elif ext in [".rar", ".7z"]:
             print(f"[1/4] Extracting {ext.upper()} archive via system extractor...")
             extracted = False
-            tar_exe = r"C:\Windows\System32\tar.exe"
-            if os.path.exists(tar_exe):
-                cmd = f'"{tar_exe}" -xf "{archive_path}" -C "{temp_extract_dir}"'
-                ret = subprocess.run(cmd, shell=True)
-                if ret.returncode == 0:
-                    extracted = True
+
+            # Check for native 7z on Linux/Railway or Windows PATH
+            seven_zip = shutil.which("7z") or shutil.which("7za")
+            if seven_zip:
+                try:
+                    cmd = [seven_zip, "x", "-y", f"-o{temp_extract_dir}", archive_path]
+                    ret = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if ret.returncode == 0:
+                        extracted = True
+                except Exception as e:
+                    print(f"[7z warning]: {e}")
 
             if not extracted:
+                # Check for native tar on Linux / Windows
+                tar_cmd = shutil.which("tar") or (r"C:\Windows\System32\tar.exe" if os.path.exists(r"C:\Windows\System32\tar.exe") else None)
+                if tar_cmd:
+                    try:
+                        ret = subprocess.run([tar_cmd, "-xf", archive_path, "-C", temp_extract_dir], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        if ret.returncode == 0:
+                            extracted = True
+                    except Exception as e:
+                        print(f"[tar warning]: {e}")
+
+            if not extracted:
+                # Check for unrar on Linux / Windows
+                unrar = shutil.which("unrar")
+                if unrar:
+                    try:
+                        ret = subprocess.run([unrar, "x", "-y", archive_path, temp_extract_dir + os.sep], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        if ret.returncode == 0:
+                            extracted = True
+                    except Exception as e:
+                        print(f"[unrar warning]: {e}")
+
+            if not extracted:
+                # Windows standard program file locations
                 for exe in [r"C:\Program Files\7-Zip\7z.exe", r"C:\Program Files\WinRAR\WinRAR.exe", r"C:\Program Files\WinRAR\Rar.exe"]:
                     if os.path.exists(exe):
                         cmd = f'"{exe}" x -y "{archive_path}" "{temp_extract_dir}\\"'
@@ -58,7 +86,12 @@ def extract_archive(archive_path, target_dir=DATA_DIR):
                         break
 
             if not extracted:
-                return {"success": False, "message": "Could not find automated RAR extractor on Windows."}
+                return {"success": False, "message": f"Could not find automated {ext.upper()} extractor (7z, unrar, tar) on host system."}
+
+        elif ext in [".xlsx", ".xls", ".xml", ".json"]:
+            # Direct file upload (Excel, XML Daybook, or JSON Sync)
+            print(f"[1/4] Direct data file detected: {filename}")
+            shutil.copy2(archive_path, os.path.join(temp_extract_dir, filename))
 
         elif os.path.isdir(archive_path):
             shutil.copytree(archive_path, os.path.join(temp_extract_dir, filename), dirs_exist_ok=True)
@@ -114,6 +147,15 @@ def extract_archive(archive_path, target_dir=DATA_DIR):
                 "file_count": len(files)
             })
 
+        # Also copy any standalone Excel, JSON, or XML files directly to target_dir for instant parser ingestion
+        imported_files = []
+        for root, dirs, files in os.walk(temp_extract_dir):
+            for f in files:
+                if f.lower().endswith((".xlsx", ".xls", ".json", ".xml", ".csv")):
+                    dst_file = os.path.join(target_dir, f)
+                    shutil.copy2(os.path.join(root, f), dst_file)
+                    imported_files.append(f)
+
         # Cleanup temp directory
         shutil.rmtree(temp_extract_dir, ignore_errors=True)
 
@@ -121,7 +163,8 @@ def extract_archive(archive_path, target_dir=DATA_DIR):
         return {
             "success": True,
             "companies": found_companies,
-            "message": f"Successfully extracted and mounted {len(found_companies)} Tally Company Database(s)."
+            "imported_files": imported_files,
+            "message": f"Successfully extracted and mounted {len(found_companies)} Tally Company Database(s) and {len(imported_files)} data file(s)."
         }
 
     except Exception as e:
