@@ -180,5 +180,5 @@ def sync_to_railway(railway_url="http://localhost:5050", project_name="Sun Footp
         return False
 
 if __name__ == "__main__":
-    target = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:5050"
+    target = sys.argv[1] if len(sys.argv) > 1 else "https://sunbuilders-production.up.railway.app"
     sync_to_railway(target)
