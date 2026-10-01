@@ -10,6 +10,7 @@ from core.tally_file_reader import TallyFileReader
 from core.gst_rules import RealEstateGSTRules
 from core.excel_generator import ExcelGenerator
 from core.tally_installer import TallyManager
+from core.db import db
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "project_master.json")
@@ -18,6 +19,20 @@ FALLBACK_TEMPLATE_PATH = os.path.join(BASE_DIR, "data", "01.GSTR -1 AUG-26 SUN B
 TEMPLATE_PATH = PRIMARY_TEMPLATE_PATH if os.path.exists(PRIMARY_TEMPLATE_PATH) else FALLBACK_TEMPLATE_PATH
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Startup Database Seeding
+try:
+    if os.path.exists(CONFIG_PATH):
+        db.seed_projects_from_file(CONFIG_PATH)
+    footprint_sync_path = os.path.join(BASE_DIR, "data", "synced_sun_footprint.json")
+    if os.path.exists(footprint_sync_path):
+        with open(footprint_sync_path, "r", encoding="utf-8") as f:
+            synced_payload = json.load(f)
+            v_list = synced_payload.get("vouchers") if isinstance(synced_payload, dict) else synced_payload
+            if isinstance(v_list, list) and v_list:
+                db.save_vouchers("010010", v_list)
+except Exception as _e:
+    print(f"[DB Startup Seed] Notice: {_e}")
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -257,22 +272,63 @@ def api_tally_setup():
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "project_master.json")
 
 def load_project_master():
+    master = {"projects": {}}
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
+                master = json.load(f)
         except Exception as e:
             print("Error loading project master:", e)
-    return {"projects": {}}
+
+    # Sync with PostgreSQL / DB if available
+    try:
+        db_projects = db.get_projects()
+        if db_projects:
+            for p in db_projects:
+                p_code = p.get("code")
+                for pkey, pcfg in master.get("projects", {}).items():
+                    if pcfg.get("code") == p_code:
+                        pcfg["has_bu"] = (p.get("bu_status") == "obtained")
+                        pcfg["bu_permission_date"] = p.get("bu_date")
+                        pcfg["bu_reference_no"] = p.get("bu_ref") or pcfg.get("bu_reference_no", "")
+                        pcfg["authority"] = p.get("bu_authority") or pcfg.get("authority", "")
+                        pcfg["notes"] = p.get("notes") or pcfg.get("notes", "")
+                        rate_str = str(p.get("gst_rate") or "")
+                        if "1%" in rate_str:
+                            pcfg["default_residential_rate"] = 0.01
+                        elif "5%" in rate_str:
+                            pcfg["default_residential_rate"] = 0.05
+    except Exception as e:
+        print("[load_project_master] DB sync notice:", e)
+
+    return master
 
 def save_project_master(data):
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        return True
     except Exception as e:
-        print("Error saving project master:", e)
-        return False
+        print("Error saving project master file:", e)
+
+    # Sync to PostgreSQL / DB
+    try:
+        for pkey, pcfg in data.get("projects", {}).items():
+            code = pcfg.get("code")
+            if code:
+                db.upsert_project(
+                    code=code,
+                    name=pcfg.get("display_name", pkey),
+                    project_type=pcfg.get("type", "Residential"),
+                    gst_rate="1%" if pcfg.get("default_residential_rate") == 0.01 else "5%",
+                    bu_status="obtained" if pcfg.get("has_bu") else "under_construction",
+                    bu_date=pcfg.get("bu_permission_date"),
+                    bu_ref=pcfg.get("bu_reference_no", ""),
+                    bu_authority=pcfg.get("authority", ""),
+                    notes=pcfg.get("notes", "")
+                )
+    except Exception as e:
+        print("Error saving project master to DB:", e)
+    return True
 
 def parse_unit_and_names(raw_text):
     if not raw_text:
@@ -679,6 +735,44 @@ def api_vouchers():
         except Exception as e:
             print(f"Error loading vouchers for {pcfg['name']}:", e)
 
+    # Database caching & fallback for ephemeral cloud environments
+    if vouchers:
+        try:
+            db.save_vouchers(target_key, [{
+                "voucher_number": v.get("vch_no", ""),
+                "date": v.get("date", ""),
+                "party_name": v.get("name", ""),
+                "party_original": v.get("raw_name", ""),
+                "block_no": v.get("unit", "").split("-")[0] if "-" in str(v.get("unit", "")) else "",
+                "unit_no": v.get("unit", ""),
+                "amount": v.get("cr_amount", 0),
+                "classification": v.get("classification", ""),
+                "gst_rate": pcfg.get("rate", "1%"),
+                "narration": v.get("narration", ""),
+                "is_exempt": (v.get("badge_type") == "exempt")
+            } for v in vouchers])
+        except Exception as e:
+            print("[DB Cache Warning]:", e)
+    else:
+        try:
+            db_rows = db.get_vouchers(target_key)
+            if db_rows:
+                vouchers = [{
+                    "date": r.get("date", ""),
+                    "vch_no": r.get("voucher_number", ""),
+                    "unit": r.get("unit_no") or r.get("block_no") or "—",
+                    "name": r.get("party_name", ""),
+                    "raw_name": r.get("party_original", ""),
+                    "project": pcfg["name"],
+                    "cr_amount": float(r.get("amount") or 0),
+                    "deductions": 0.0,
+                    "taxable_amount": 0.0 if r.get("is_exempt") else float(r.get("amount") or 0),
+                    "classification": r.get("classification", ""),
+                    "badge_type": "exempt" if r.get("is_exempt") else ("taxable-1" if "1%" in str(r.get("gst_rate")) else "taxable-5")
+                } for r in db_rows]
+        except Exception as e:
+            print("[DB Fallback Warning]:", e)
+
     # Calculate post_bu_exempt and net taxable dynamically
     if target_key == "010010":
         if has_bu and bu_date_str:
@@ -717,6 +811,7 @@ def api_vouchers_sync():
     """Receives synced vouchers from local client Windows machine running Tally."""
     data = request.get_json() or {}
     project = data.get("project", "Sun Footprint")
+    project_code = data.get("company_code") or data.get("project_code") or "010010"
     vouchers = data.get("vouchers", [])
     
     # Save synced payload in data directory
@@ -727,9 +822,15 @@ def api_vouchers_sync():
     except Exception as e:
         print("Error saving sync data:", e)
 
+    # Persist to PostgreSQL / Database
+    try:
+        db.save_vouchers(project_code, vouchers)
+    except Exception as e:
+        print("Error saving sync data to database:", e)
+
     return jsonify({
         "status": "success",
-        "message": f"Successfully received {len(vouchers)} vouchers for {project} from local Tally.",
+        "message": f"Successfully received {len(vouchers)} vouchers for {project} and persisted to Database.",
         "project": project,
         "count": len(vouchers)
     })

@@ -28,3 +28,7 @@ output/~$*.xlsx
 
 # Railway
 .railway/
+
+# Local databases
+*.db
+data/*.db
