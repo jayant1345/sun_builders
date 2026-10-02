@@ -122,18 +122,25 @@ function ensureProjectInSelect(sel, code, label) {
 }
 
 let vouchersLoaded = false;
-async function loadRealVouchers(projectKey) {
+async function loadRealVouchers(projectKey, month, year) {
     try {
         const vSel = document.getElementById('select-voucher-project');
         const hSel = document.getElementById('select-header-project');
-        const targetKey = projectKey || (vSel ? vSel.value : '010000');
+        const mSel = document.getElementById('select-voucher-month');
+        const ySel = document.getElementById('select-voucher-year');
+
+        const targetKey = projectKey || (vSel ? vSel.value : '010010');
+        const targetMonth = month !== undefined ? month : (mSel ? mSel.value : 'ALL');
+        const targetYear = year !== undefined ? year : (ySel ? ySel.value : 'ALL');
         
         ensureProjectInSelect(vSel, targetKey, `🏢 Project (${targetKey})`);
         ensureProjectInSelect(hSel, targetKey, `Project (${targetKey})`);
         if (vSel && vSel.value !== targetKey) vSel.value = targetKey;
         if (hSel && hSel.value !== targetKey) hSel.value = targetKey;
+        if (mSel && month !== undefined && mSel.value !== targetMonth) mSel.value = targetMonth;
+        if (ySel && year !== undefined && ySel.value !== targetYear) ySel.value = targetYear;
 
-        const resp = await fetch(`/api/vouchers?project=${encodeURIComponent(targetKey)}`);
+        const resp = await fetch(`/api/vouchers?project=${encodeURIComponent(targetKey)}&month=${encodeURIComponent(targetMonth)}&year=${encodeURIComponent(targetYear)}`);
         const data = await resp.json();
         if (data.status === 'success' && data.vouchers) {
             vouchersLoaded = true;
@@ -148,10 +155,14 @@ async function loadRealVouchers(projectKey) {
                 hSel.value = data.company_code;
             }
 
-            // Update active company badge
+            // Update active company badge & period badge
             const activeBadge = document.getElementById('active-company-badge');
             if (activeBadge) {
                 activeBadge.textContent = `Company: ${data.company_code} (${data.project_name}) Loaded`;
+            }
+            const periodBadge = document.getElementById('voucher-active-period-badge');
+            if (periodBadge) {
+                periodBadge.textContent = `Period: ${data.period_display || 'ALL'}`;
             }
 
             const tbody = document.getElementById('voucher-table-body');
@@ -161,8 +172,8 @@ async function loadRealVouchers(projectKey) {
                     tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-on-surface-variant font-sans">
                         <div class="flex flex-col items-center justify-center gap-2">
                             <span class="material-symbols-outlined text-outline text-3xl">receipt_long</span>
-                            <span class="font-bold text-on-surface">No Collection Vouchers for ${data.project_name} (${data.company_code}) in Period AUG-26</span>
-                            <span class="text-xs text-on-surface-variant max-w-md">In the source CA workbook, Sun Silver Spring recorded ₹0 member receipts for August 2026. If Company 010002 has transactions in other periods, open it in Tally and run the Sync Agent.</span>
+                            <span class="font-bold text-on-surface">No Collection Vouchers for ${data.project_name} (${data.company_code}) in Period ${data.period_display || 'Selected'}</span>
+                            <span class="text-xs text-on-surface-variant max-w-md">No transactions recorded for this selected month and year. Switch the filter to "All Months" or another period, or run Tally Sync.</span>
                         </div>
                     </td></tr>`;
                 } else {
@@ -203,11 +214,14 @@ async function loadRealVouchers(projectKey) {
 
             // Update stats cards
             const totalTitle = document.getElementById('vouchers-metric-title-total');
-            if (totalTitle) totalTitle.textContent = `${data.project_name} Vouchers`;
+            if (totalTitle) totalTitle.textContent = `${data.project_name} Vouchers (${data.period_display || 'ALL'})`;
             const totalElem = document.getElementById('vouchers-metric-total');
             if (totalElem) totalElem.textContent = `${data.count} Vouchers`;
             const totalSub = document.getElementById('vouchers-metric-sub-total');
-            if (totalSub) totalSub.textContent = `✓ Company Code: ${data.company_code}`;
+            if (totalSub) {
+                const grossCr = (Number(data.total_gross || 0) / 10000000).toFixed(2);
+                totalSub.textContent = `Gross: ₹${grossCr} Cr | Co: ${data.company_code}`;
+            }
             
             const exemptTitle = document.getElementById('vouchers-metric-title-exempt');
             if (exemptTitle) exemptTitle.textContent = data.has_bu ? `Post-BU Exempt (${data.project_name})` : 'Post-BU Exemption Status';
@@ -378,6 +392,26 @@ document.addEventListener('DOMContentLoaded', () => {
             if (vProjectSelect) vProjectSelect.value = val;
             loadRealVouchers(val);
             appendLog('INFO', `Switched project view to ${val}.`);
+        });
+    }
+
+    // Setup Month and Year Filter Dropdowns
+    const vMonthSelect = document.getElementById('select-voucher-month');
+    const vYearSelect = document.getElementById('select-voucher-year');
+
+    if (vMonthSelect) {
+        vMonthSelect.addEventListener('change', (e) => {
+            const mVal = e.target.value;
+            loadRealVouchers();
+            appendLog('INFO', `Filtered vouchers by month: ${mVal}.`);
+        });
+    }
+
+    if (vYearSelect) {
+        vYearSelect.addEventListener('change', (e) => {
+            const yVal = e.target.value;
+            loadRealVouchers();
+            appendLog('INFO', `Filtered vouchers by year: ${yVal}.`);
         });
     }
 

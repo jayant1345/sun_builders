@@ -955,39 +955,73 @@
             </div>
           </div>
 
-          <!-- Voucher Search & Project Selector Filter -->
-          <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 mb-3">
+          <!-- Voucher Search, Project, Month & Year Selector Filter -->
+          <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 mb-3">
             <div class="flex flex-wrap items-center gap-2.5 flex-1">
               <!-- Project Selector Dropdown -->
               <div class="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2 shadow-xs">
                 <span class="material-symbols-outlined text-blue-700 text-[18px]">apartment</span>
                 <span class="text-xs font-bold text-slate-600">Project:</span>
                 <select id="select-voucher-project" class="bg-transparent border-0 p-0 text-xs font-bold text-blue-900 font-sans focus:ring-0 cursor-pointer">
-                  <option value="010000" selected class="bg-white text-slate-800">🏢 Sun Atmosphere (010000) — 258 Vouchers [1% Affordable]</option>
-                  <option value="010010" class="bg-white text-slate-800">🏢 Sun Footprint (010010) — 96 Vouchers [1% Affordable]</option>
-                  <option value="010011" class="bg-white text-slate-800">🏢 Sun Park West (010011) — 52 Vouchers [5% Standard]</option>
+                  <option value="010010" selected class="bg-white text-slate-800">🏢 Sun Footprint (010010) — [1% Affordable]</option>
+                  <option value="010000" class="bg-white text-slate-800">🏢 Sun Atmosphere (010000) — [1% Affordable]</option>
+                  <option value="010011" class="bg-white text-slate-800">🏢 Sun Park West (010011) — [5% Standard]</option>
                   <option value="010002" class="bg-white text-slate-800">🏢 Sun Silver Spring (010002) — [5% Standard]</option>
                   <option value="010009" class="bg-white text-slate-800">🏢 Sun Gravitas Commercial (010009) — [18% / 12% Abated]</option>
                   <option value="010015" class="bg-white text-slate-800">🏢 Lekhambha (010015) — [Plotted Development]</option>
                 </select>
               </div>
 
+              <!-- Month Filter Dropdown -->
+              <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 shadow-xs">
+                <span class="material-symbols-outlined text-emerald-600 text-[17px]">calendar_month</span>
+                <span class="text-xs font-bold text-slate-600">Month:</span>
+                <select id="select-voucher-month" class="bg-transparent border-0 p-0 text-xs font-bold text-slate-800 font-sans focus:ring-0 cursor-pointer">
+                  <option value="ALL">All Months</option>
+                  <option value="07">July (JUL)</option>
+                  <option value="08">August (AUG)</option>
+                  <option value="09">September (SEP)</option>
+                  <option value="10">October (OCT)</option>
+                  <option value="11">November (NOV)</option>
+                  <option value="12">December (DEC)</option>
+                  <option value="01">January (JAN)</option>
+                  <option value="02">February (FEB)</option>
+                  <option value="03">March (MAR)</option>
+                  <option value="04">April (APR)</option>
+                  <option value="05">May (MAY)</option>
+                  <option value="06">June (JUN)</option>
+                </select>
+              </div>
+
+              <!-- Year Filter Dropdown -->
+              <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 shadow-xs">
+                <span class="material-symbols-outlined text-indigo-600 text-[17px]">event</span>
+                <span class="text-xs font-bold text-slate-600">Year:</span>
+                <select id="select-voucher-year" class="bg-transparent border-0 p-0 text-xs font-bold text-slate-800 font-sans focus:ring-0 cursor-pointer">
+                  <option value="ALL">All Years</option>
+                  <option value="2026" selected>2026</option>
+                  <option value="2025">2025</option>
+                  <option value="2024">2024</option>
+                  <option value="2023">2023</option>
+                </select>
+              </div>
+
               <!-- BU Date Entry Button -->
-              <button id="btn-open-bu-modal" onclick="window.openBuModal && window.openBuModal()" type="button" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer">
+              <button id="btn-open-bu-modal" onclick="window.openBuModal && window.openBuModal()" type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer">
                 <span class="material-symbols-outlined text-[16px]">edit_calendar</span>
-                <span>Set BU Permission Date</span>
+                <span>Set BU Date</span>
               </button>
 
               <!-- Search Input -->
-              <div class="relative w-full max-w-xs">
-                <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-[16px]">search</span>
-                <input id="voucher-search-input" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl pl-8 pr-3 py-2 focus:border-blue-600 focus:bg-white shadow-xs font-medium" placeholder="Search by Voucher No, Buyer Name, Flat..." type="text"/>
+              <div class="relative w-full sm:w-56">
+                <span class="material-symbols-outlined absolute left-2.5 top-2.5 text-slate-400 text-[16px]">search</span>
+                <input id="voucher-search-input" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl pl-8 pr-3 py-2 focus:border-blue-600 focus:bg-white shadow-xs font-medium" placeholder="Search flat, name, vch..." type="text"/>
               </div>
             </div>
 
             <div class="flex items-center gap-2 text-xs text-slate-500 font-mono">
               <span id="active-company-badge" class="px-3 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold shadow-xs">Company: 010010 Loaded</span>
-              <span class="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-medium">Period: AUG-26</span>
+              <span id="voucher-active-period-badge" class="px-2.5 py-1 rounded-lg bg-blue-100 border border-blue-200 text-blue-800 font-bold">Period: ALL</span>
             </div>
           </div>
 

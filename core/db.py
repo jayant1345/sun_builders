@@ -247,17 +247,23 @@ class DatabaseManager:
             with self.get_connection() as conn:
                 cur = conn.cursor()
                 for v in vouchers:
-                    v_num = str(v.get("voucher_number") or "")
-                    v_date = str(v.get("date") or "")
-                    party = str(v.get("party_name") or "")
-                    orig = str(v.get("party_original") or party)
+                    v_num = str(v.get("voucher_number") or v.get("vch_no") or v.get("voucher_no") or "")
+                    v_date = str(v.get("date") or v.get("iso_date") or "")
+                    party = str(v.get("party_name") or v.get("member_name") or v.get("name") or "")
+                    orig = str(v.get("party_original") or v.get("raw_name") or party)
                     blk = str(v.get("block_no") or "")
-                    unit = str(v.get("unit_no") or "")
-                    amt = float(v.get("amount") or 0)
+                    unit = str(v.get("unit_no") or v.get("flat_no") or v.get("unit") or "")
+                    
+                    amt_raw = v.get("amount") if v.get("amount") is not None else v.get("cr_amount", 0)
+                    try:
+                        amt = float(amt_raw or 0)
+                    except (ValueError, TypeError):
+                        amt = 0.0
+
                     cls = str(v.get("classification") or "")
                     rate = str(v.get("gst_rate") or "")
                     narr = str(v.get("narration") or "")
-                    exempt = bool(v.get("is_exempt", False))
+                    exempt = bool(v.get("is_exempt") or v.get("badge_type") == "exempt" or "exempt" in cls.lower())
 
                     if self.is_postgres:
                         cur.execute("""
