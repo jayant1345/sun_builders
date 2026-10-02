@@ -322,7 +322,10 @@ def api_download_sync_bat():
     cloud_url = request.host_url.rstrip("/")
     bat_path = os.path.join(BASE_DIR, "Sun_Tally_Sync.bat")
     if os.path.exists(bat_path):
-        with open(bat_path, "r", encoding="utf-8") as f:
+        # newline="" preserves the file's CRLF endings exactly; without it,
+        # Python's universal-newline translation would strip them to LF,
+        # which breaks a Windows batch file.
+        with open(bat_path, "r", encoding="utf-8", newline="") as f:
             content = f.read()
         content = content.replace("https://sunbuilders-production.up.railway.app", cloud_url)
         from flask import Response
