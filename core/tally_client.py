@@ -8,7 +8,10 @@ class TallyClient:
     Communicates with Tally.ERP 9 / TallyPrime via local XML/HTTP API on port 9000.
     """
     def __init__(self, host="localhost", port=9000):
-        self.url = f"http://{host}:{port}"
+        if isinstance(host, str) and (host.startswith("http://") or host.startswith("https://")):
+            self.url = host.rstrip('/')
+        else:
+            self.url = f"http://{host}:{port}"
 
     def is_connected(self) -> bool:
         """Checks if Tally is running and responding on the specified port."""
