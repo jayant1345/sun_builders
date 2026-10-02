@@ -1682,39 +1682,66 @@
         </button>
       </div>
 
-      <!-- Instructions List -->
-      <div class="flex flex-col gap-3 text-xs text-slate-600">
-        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-3">
-          <span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[11px] flex-shrink-0 mt-0.5">1</span>
-          <div>
-            <div class="font-semibold text-slate-900">Open Tally on your Local Windows PC</div>
-            <p class="text-[11px] text-slate-500 mt-0.5">Open Tally 7.1 or Tally Prime in Education Mode. Load your desired company (e.g. 010010, Sun Atmosphere).</p>
+      <!-- Action Box: Direct Live Sync Trigger -->
+      <div class="p-4 rounded-xl bg-gradient-to-r from-emerald-50 via-slate-50 to-teal-50 border border-emerald-200 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+        <div>
+          <div class="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-[18px] text-emerald-600">bolt</span>
+            <span>Direct Button-Based Live Sync</span>
           </div>
+          <p class="text-[11px] text-slate-600 mt-0.5">Click to query Tally 7.1 / Prime on Port 9000, extract daybook vouchers, and update dashboard immediately.</p>
         </div>
+        <button id="btn-modal-trigger-live-sync" class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 flex-shrink-0 shadow-md shadow-emerald-500/25 active:scale-[0.98] transition-all">
+          <span class="material-symbols-outlined text-[16px]">sync</span>
+          <span id="btn-modal-sync-text">Sync Live Tally (Port 9000)</span>
+        </button>
+      </div>
 
-        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-3">
-          <span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[11px] flex-shrink-0 mt-0.5">2</span>
-          <div class="w-full">
-            <div class="font-semibold text-slate-900">Run the Sync Agent (Double Click or Terminal)</div>
-            <p class="text-[11px] text-slate-500 mt-0.5 mb-2">Double click <code class="text-emerald-700 font-mono font-semibold">run_local_sync.bat</code> in the project directory, or run:</p>
-            <div class="p-2 rounded-lg bg-slate-100 border border-slate-200 font-mono text-[11px] text-blue-700 flex items-center justify-between">
-              <span id="sync-command-text">python tally_sync_agent.py</span>
-              <button id="btn-copy-sync-cmd" class="text-slate-600 hover:text-slate-900 text-[10px] font-sans px-2.5 py-1 rounded bg-white hover:bg-slate-50 border border-slate-200 transition-colors shadow-xs font-semibold">
-                Copy
-              </button>
-            </div>
+      <!-- Live Sync Status Banner -->
+      <div id="modal-sync-status-box" class="hidden p-3 rounded-xl border text-xs flex items-center gap-2">
+        <span id="modal-sync-status-icon" class="material-symbols-outlined text-[18px]">info</span>
+        <span id="modal-sync-status-msg" class="font-medium"></span>
+      </div>
+
+      <!-- Remote / Cloud PC Connector Section -->
+      <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-[16px] text-blue-600">download</span>
+            <span>Using Railway Cloud from another PC?</span>
           </div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-100 text-blue-800 font-bold">No Python Required</span>
         </div>
+        <p class="text-[11px] text-slate-600 leading-relaxed">
+          If you are accessing the software from another PC in the CA office, download this 1-click Windows connector. It uses native Windows PowerShell to query your local Tally (Port 9000) and pushes vouchers to this cloud link automatically:
+        </p>
+        <a id="btn-download-sync-connector" href="/api/download/Sun_Tally_Sync.bat" download="Sun_Tally_Sync.bat" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+          <span class="material-symbols-outlined text-[18px]">download_for_offline</span>
+          <span>Download 1-Click Windows Sync Connector (.bat)</span>
+        </a>
+      </div>
 
-        <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-start gap-3">
-          <span class="material-symbols-outlined text-emerald-600 text-[20px] flex-shrink-0">check_circle</span>
-          <div class="text-[11px] text-slate-800 leading-relaxed">
-            <strong>Automatic Ingestion:</strong> The agent reads all daybook vouchers directly from Port 9000, pushes them to Railway, and this dashboard refreshes automatically with complete GST calculations!
-          </div>
+      <!-- Quick 3-Step Guide -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+        <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex flex-col gap-1">
+          <span class="text-[10px] font-mono font-bold text-emerald-700">STEP 1</span>
+          <div class="font-semibold text-slate-900 text-[11px]">Open Tally 7.1</div>
+          <p class="text-[10px] text-slate-500">Load company (e.g. 010000 or 010010). Port 9000 is active.</p>
+        </div>
+        <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex flex-col gap-1">
+          <span class="text-[10px] font-mono font-bold text-emerald-700">STEP 2</span>
+          <div class="font-semibold text-slate-900 text-[11px]">Click Sync Button</div>
+          <p class="text-[10px] text-slate-500">Click button above or run downloaded .bat tool.</p>
+        </div>
+        <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex flex-col gap-1">
+          <span class="text-[10px] font-mono font-bold text-emerald-700">STEP 3</span>
+          <div class="font-semibold text-slate-900 text-[11px]">View Vouchers</div>
+          <p class="text-[10px] text-slate-500">All vouchers &amp; returns populate immediately.</p>
         </div>
       </div>
 
-      <div class="pt-2 border-t border-slate-100 flex justify-end">
+      <div class="pt-2 border-t border-slate-100 flex justify-between items-center">
+        <span class="text-[11px] text-slate-400 font-mono">Tally XML API on Port 9000</span>
         <button id="btn-close-sync-modal-footer" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs transition-colors">
           Close
         </button>

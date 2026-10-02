@@ -473,9 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 6. Resync & Tally Handlers
     document.querySelectorAll('.btn-resync-ledger').forEach(btn => {
         btn.addEventListener('click', async () => {
-            appendLog('INFO', 'Re-synchronizing Tally connection on port 9000...');
-            await checkStatus();
-            appendLog('SUCCESS', 'Tally status verified.');
+            await executeTallyLiveSync(btn);
         });
     });
 
@@ -875,21 +873,111 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 9. Local Tally Sync Agent Modal
+    // 9. Local Tally Sync Agent Modal & Button-Based Live Sync
     const syncModal = document.getElementById('sync-agent-modal');
     const btnOpenSyncModal = document.getElementById('btn-open-sync-modal');
     const btnCloseSyncModal = document.getElementById('btn-close-sync-modal');
     const btnCloseSyncFooter = document.getElementById('btn-close-sync-modal-footer');
-    const syncCommandText = document.getElementById('sync-command-text');
-    const btnCopySyncCmd = document.getElementById('btn-copy-sync-cmd');
+    const btnModalTriggerLiveSync = document.getElementById('btn-modal-trigger-live-sync');
+    const btnDownloadSync = document.getElementById('btn-download-sync-connector');
+
+    async function executeTallyLiveSync(triggerBtn) {
+        let originalContent = '';
+        if (triggerBtn) {
+            originalContent = triggerBtn.innerHTML;
+            triggerBtn.disabled = true;
+            triggerBtn.innerHTML = `<span class="material-symbols-outlined text-[16px] animate-spin">sync</span><span>Syncing Port 9000...</span>`;
+        }
+
+        appendLog('INFO', '⚡ Querying Tally 7.1 / Prime on Port 9000...');
+
+        const statusBox = document.getElementById('modal-sync-status-box');
+        const statusIcon = document.getElementById('modal-sync-status-icon');
+        const statusMsg = document.getElementById('modal-sync-status-msg');
+
+        try {
+            const resp = await fetch('/api/tally/sync_live', { method: 'POST' });
+            const data = await resp.json();
+
+            if (data.status === 'success') {
+                appendLog('SUCCESS', `✓ ${data.message}`);
+                
+                if (statusBox) {
+                    statusBox.className = 'p-3 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs flex items-center gap-2';
+                    if (statusIcon) statusIcon.textContent = 'check_circle';
+                    if (statusMsg) statusMsg.textContent = data.message;
+                    statusBox.classList.remove('hidden');
+                }
+
+                const projSelect = document.getElementById('select-voucher-project');
+                if (projSelect && data.project_code) {
+                    projSelect.value = data.project_code;
+                }
+                
+                await loadRealVouchers(data.project_code || '010010');
+                await checkStatus();
+
+                setTimeout(() => {
+                    if (syncModal) syncModal.classList.add('hidden');
+                }, 1500);
+
+            } else {
+                appendLog('WARN', `[Port 9000 Notice]: ${data.message}`);
+                
+                if (statusBox) {
+                    statusBox.className = 'p-3 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 text-xs flex items-center gap-2';
+                    if (statusIcon) statusIcon.textContent = 'sensors_off';
+                    if (statusMsg) statusMsg.textContent = `${data.message} ${data.suggestion || ''}`;
+                    statusBox.classList.remove('hidden');
+                }
+
+                if (syncModal) {
+                    syncModal.classList.remove('hidden');
+                }
+
+                startVoucherSyncPolling();
+            }
+        } catch (err) {
+            appendLog('ERROR', `Live sync error: ${err.message}`);
+            if (syncModal) syncModal.classList.remove('hidden');
+        } finally {
+            if (triggerBtn) {
+                triggerBtn.disabled = false;
+                triggerBtn.innerHTML = originalContent;
+            }
+        }
+    }
+
+    let pollInterval = null;
+    function startVoucherSyncPolling() {
+        if (pollInterval) clearInterval(pollInterval);
+        let attempts = 0;
+        pollInterval = setInterval(async () => {
+            attempts++;
+            if (attempts > 30) {
+                clearInterval(pollInterval);
+                return;
+            }
+            try {
+                const projSelect = document.getElementById('select-voucher-project');
+                const targetCode = projSelect ? projSelect.value : '010010';
+                const r = await fetch(`/api/vouchers?project=${targetCode}`);
+                const d = await r.json();
+                if (d.source && d.source.includes('Connector')) {
+                    clearInterval(pollInterval);
+                    appendLog('SUCCESS', `☁️ Detected incoming vouchers via 1-Click Sync Connector! (${d.count} vouchers)`);
+                    await loadRealVouchers(targetCode);
+                    if (syncModal) syncModal.classList.add('hidden');
+                }
+            } catch (e) {}
+        }, 3000);
+    }
 
     if (btnOpenSyncModal && syncModal) {
         btnOpenSyncModal.addEventListener('click', () => {
-            const currentOrigin = window.location.origin;
-            if (syncCommandText) {
-                syncCommandText.textContent = `python tally_sync_agent.py ${currentOrigin}`;
-            }
             syncModal.classList.remove('hidden');
+            const statusBox = document.getElementById('modal-sync-status-box');
+            if (statusBox) statusBox.classList.add('hidden');
         });
 
         const closeSync = () => syncModal.classList.add('hidden');
@@ -898,15 +986,19 @@ document.addEventListener('DOMContentLoaded', () => {
         syncModal.addEventListener('click', (e) => {
             if (e.target === syncModal) closeSync();
         });
+    }
 
-        if (btnCopySyncCmd && syncCommandText) {
-            btnCopySyncCmd.addEventListener('click', () => {
-                navigator.clipboard.writeText(syncCommandText.textContent).then(() => {
-                    btnCopySyncCmd.textContent = 'Copied!';
-                    setTimeout(() => { btnCopySyncCmd.textContent = 'Copy'; }, 2000);
-                });
-            });
-        }
+    if (btnModalTriggerLiveSync) {
+        btnModalTriggerLiveSync.addEventListener('click', async () => {
+            await executeTallyLiveSync(btnModalTriggerLiveSync);
+        });
+    }
+
+    if (btnDownloadSync) {
+        btnDownloadSync.addEventListener('click', () => {
+            appendLog('INFO', '📥 Downloading 1-Click Windows Tally Sync Connector (Sun_Tally_Sync.bat)...');
+            startVoucherSyncPolling();
+        });
     }
 
     // 10. BU Permission Date & Statutory Cutoff Modal Handlers
