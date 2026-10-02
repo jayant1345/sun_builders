@@ -33,13 +33,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     $tallyUrl = 'http://localhost:9000'; ^
     $cloudUrl = '%CLOUD_URL%/api/vouchers/sync'; ^
     Write-Host '[1/4] Connecting to Tally 7.1 on Port 9000...' -ForegroundColor Cyan; ^
-    $pingXml = '<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>List of Companies</ID></HEADER><BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY></ENVELOPE>'; ^
-    $compResp = Invoke-RestMethod -Uri $tallyUrl -Method Post -Body $pingXml -ContentType 'text/xml' -TimeoutSec 4; ^
-    [xml]$cxml = $compResp; ^
-    $companies = @($cxml.SelectNodes('//COMPANYNAME') | ForEach-Object { $_.InnerText }); ^
+    $companies = @(); ^
+    foreach ($rt in @('Collection', 'Data')) { ^
+      $pingXml = '<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>' + $rt + '</TYPE><ID>List of Companies</ID></HEADER><BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY></ENVELOPE>'; ^
+      try { ^
+        $compResp = Invoke-RestMethod -Uri $tallyUrl -Method Post -Body $pingXml -ContentType 'text/xml' -TimeoutSec 4; ^
+        [xml]$cxml = $compResp; ^
+        $cList = @($cxml.SelectNodes('//COMPANYNAME') | ForEach-Object { $_.InnerText }); ^
+        if (-not $cList -or $cList.Count -eq 0) { $cList = @($cxml.SelectNodes('//NAME') | ForEach-Object { $_.InnerText } | Where-Object { -not $_.StartsWith('$$') }) }; ^
+        if ($cList -and $cList.Count -gt 0) { $companies = $cList; break }; ^
+      } catch {}; ^
+    }; ^
     if (-not $companies -or $companies.Count -eq 0) { ^
       Write-Host '[!] Tally is online on Port 9000, but no company is currently open.' -ForegroundColor Yellow; ^
-      Write-Host 'Please open your Sun Builders company (e.g. 010000 or 010010) in Tally and press any key to re-try.' -ForegroundColor Yellow; ^
+      Write-Host 'Please open your Sun Builders company (e.g. 010002 or 010010) in Tally and press any key to re-try.' -ForegroundColor Yellow; ^
       exit 1 ^
     }; ^
     $activeComp = $companies[0]; ^

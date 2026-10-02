@@ -5,9 +5,101 @@ async function checkStatus() {
         const resp = await fetch('/api/status');
         const data = await resp.json();
         console.log('Tally & Database Status:', data);
+
+        const sidebarPing = document.getElementById('sidebar-tally-ping');
+        const sidebarDot = document.getElementById('sidebar-tally-dot');
         const tallyStatusElem = document.getElementById('tally-status-text');
-        if (tallyStatusElem) {
-            tallyStatusElem.textContent = data.tally_connected ? 'Tally 9000 CONNECTED' : 'Tally 9000 STANDBY (Offline 010010 Ready)';
+        const tallyPortBadge = document.getElementById('tally-port-badge');
+
+        const headerBadge = document.getElementById('header-tally-badge');
+        const headerPing = document.getElementById('header-tally-ping');
+        const headerDot = document.getElementById('header-tally-dot');
+        const headerText = document.getElementById('header-tally-text');
+
+        if (data.is_cloud) {
+            // Running on Railway Cloud: explain that local PC needs the 1-click connector
+            if (tallyStatusElem) tallyStatusElem.textContent = 'Railway Cloud';
+            if (tallyPortBadge) {
+                tallyPortBadge.textContent = 'SYNC VIA .BAT';
+                tallyPortBadge.className = 'font-mono text-[10px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200';
+            }
+            if (sidebarDot) sidebarDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-blue-500';
+            if (sidebarPing) sidebarPing.classList.add('hidden');
+
+            if (headerBadge) {
+                headerBadge.className = 'hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800';
+            }
+            if (headerText) {
+                headerText.textContent = 'Railway Cloud Mode: Sync via 1-Click .bat';
+                headerText.className = 'font-mono text-xs text-blue-700 font-semibold';
+            }
+            if (headerDot) headerDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-blue-500';
+            if (headerPing) headerPing.classList.add('hidden');
+
+        } else if (data.tally_connected) {
+            // Running locally with Tally port 9000 active!
+            const comp = (data.loaded_companies && data.loaded_companies.length > 0) ? data.loaded_companies[0] : null;
+            if (comp) {
+                if (tallyStatusElem) tallyStatusElem.textContent = 'Tally 7.1 / Prime';
+                if (tallyPortBadge) {
+                    tallyPortBadge.textContent = 'PORT 9000 LIVE';
+                    tallyPortBadge.className = 'font-mono text-xs text-emerald-700 font-bold';
+                }
+                if (sidebarDot) sidebarDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+                if (sidebarPing) {
+                    sidebarPing.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+                    sidebarPing.classList.remove('hidden');
+                }
+                if (headerBadge) {
+                    headerBadge.className = 'hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800';
+                }
+                if (headerText) {
+                    headerText.textContent = `Tally 9000: ${comp}`;
+                    headerText.className = 'font-mono text-xs text-emerald-700 font-semibold';
+                }
+                if (headerDot) headerDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+                if (headerPing) {
+                    headerPing.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+                    headerPing.classList.remove('hidden');
+                }
+            } else {
+                if (tallyStatusElem) tallyStatusElem.textContent = 'Tally 9000 (No Co.)';
+                if (tallyPortBadge) {
+                    tallyPortBadge.textContent = 'SELECT COMPANY';
+                    tallyPortBadge.className = 'font-mono text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200';
+                }
+                if (sidebarDot) sidebarDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
+                if (sidebarPing) sidebarPing.classList.add('hidden');
+
+                if (headerBadge) {
+                    headerBadge.className = 'hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800';
+                }
+                if (headerText) {
+                    headerText.textContent = 'Tally Port 9000 Open: Please Open Company in Tally';
+                    headerText.className = 'font-mono text-xs text-amber-800 font-semibold';
+                }
+                if (headerDot) headerDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
+                if (headerPing) headerPing.classList.add('hidden');
+            }
+        } else {
+            // Local but Tally is closed
+            if (tallyStatusElem) tallyStatusElem.textContent = 'Tally Service';
+            if (tallyPortBadge) {
+                tallyPortBadge.textContent = 'OFFLINE (9000)';
+                tallyPortBadge.className = 'font-mono text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded';
+            }
+            if (sidebarDot) sidebarDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-slate-400';
+            if (sidebarPing) sidebarPing.classList.add('hidden');
+
+            if (headerBadge) {
+                headerBadge.className = 'hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600';
+            }
+            if (headerText) {
+                headerText.textContent = 'Tally 7.1: Standby (Port 9000)';
+                headerText.className = 'font-mono text-xs text-slate-600 font-semibold';
+            }
+            if (headerDot) headerDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-slate-400';
+            if (headerPing) headerPing.classList.add('hidden');
         }
     } catch (e) {
         console.warn('Status check warning:', e);

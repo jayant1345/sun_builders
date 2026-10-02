@@ -21,16 +21,8 @@ sys.path.insert(0, BASE_DIR)
 from core.tally_client import TallyClient
 
 def check_tally(tally_url="http://localhost:9000"):
-    req_xml = """<ENVELOPE>
-        <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>List of Companies</ID></HEADER>
-        <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY>
-    </ENVELOPE>"""
-    try:
-        req = urllib.request.Request(tally_url, data=req_xml.encode('utf-8'), headers={'Content-Type': 'text/xml'})
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            return resp.status == 200
-    except Exception:
-        return False
+    client = TallyClient(tally_url)
+    return client.is_connected()
 
 def extract_from_local_files():
     """Fallback: reads local Excel master if Tally live port is offline."""

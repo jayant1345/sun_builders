@@ -12,11 +12,13 @@ class TallyClient:
 
     def is_connected(self) -> bool:
         """Checks if Tally is running and responding on the specified port."""
-        req_xml = """<ENVELOPE>
-            <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>List of Companies</ID></HEADER>
-            <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY>
-        </ENVELOPE>"""
         try:
+            with urllib.request.urlopen(self.url, timeout=3) as resp:
+                return resp.status == 200
+        except Exception:
+            pass
+        try:
+            req_xml = """<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Companies</ID></HEADER><BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY></ENVELOPE>"""
             req = urllib.request.Request(self.url, data=req_xml.encode('utf-8'), headers={'Content-Type': 'text/xml'})
             with urllib.request.urlopen(req, timeout=3) as resp:
                 return resp.status == 200
@@ -25,20 +27,24 @@ class TallyClient:
 
     def get_loaded_companies(self) -> list:
         """Returns list of currently active / open companies in Tally."""
-        req_xml = """<ENVELOPE>
-            <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>List of Companies</ID></HEADER>
-            <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY>
-        </ENVELOPE>"""
-        try:
-            req = urllib.request.Request(self.url, data=req_xml.encode('utf-8'), headers={'Content-Type': 'text/xml'})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                raw_xml = resp.read().decode('utf-8', errors='ignore')
-                root = ET.fromstring(raw_xml)
-                companies = [elem.text for elem in root.findall(".//COMPANYNAME") if elem.text]
-                return companies
-        except Exception as e:
-            print(f"[TallyClient] Error getting companies: {e}")
-            return []
+        for req_type in ["Collection", "Data"]:
+            req_xml = f"""<ENVELOPE>
+                <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>{req_type}</TYPE><ID>List of Companies</ID></HEADER>
+                <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY>
+            </ENVELOPE>"""
+            try:
+                req = urllib.request.Request(self.url, data=req_xml.encode('utf-8'), headers={'Content-Type': 'text/xml'})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    raw_xml = resp.read().decode('utf-8', errors='ignore')
+                    root = ET.fromstring(raw_xml)
+                    companies = [elem.text for elem in root.findall(".//COMPANYNAME") if elem.text]
+                    if not companies:
+                        companies = [elem.text for elem in root.findall(".//NAME") if elem.text and not elem.text.startswith("$$")]
+                    if companies:
+                        return companies
+            except Exception as e:
+                pass
+        return []
 
     def export_vouchers_xml(self, company_name: str, from_date_yyyymmdd: str = "20000101", to_date_yyyymmdd: str = "20991231") -> str:
         """

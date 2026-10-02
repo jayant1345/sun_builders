@@ -49,6 +49,7 @@ def index():
 
 @app.route("/api/status", methods=["GET"])
 def api_status():
+    is_cloud = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_STATIC_URL") or os.environ.get("DYNO") or os.environ.get("RENDER") or (os.environ.get("PORT") and not os.path.exists(r"C:\Windows")))
     client = TallyClient()
     connected = client.is_connected()
     mgr = TallyManager(BASE_DIR)
@@ -60,6 +61,7 @@ def api_status():
     has_010010 = os.path.exists(os.path.join(BASE_DIR, "data", "010010"))
 
     return jsonify({
+        "is_cloud": is_cloud,
         "tally_connected": connected,
         "tally_port": 9000,
         "loaded_companies": companies,
@@ -336,17 +338,29 @@ def api_tally_sync_live():
     3. Formats them with unit numbers, deduction offsets, and statutory BU rules.
     4. Persists to database and syncs to cloud.
     """
+    is_cloud = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_STATIC_URL") or os.environ.get("DYNO") or os.environ.get("RENDER") or (os.environ.get("PORT") and not os.path.exists(r"C:\Windows")))
     client = TallyClient()
     connected = client.is_connected()
     
     if not connected:
-        return jsonify({
-            "status": "offline",
-            "connected": False,
-            "message": "Local Tally 7.1 is not responding on Port 9000.",
-            "suggestion": "Please ensure Tally 7.1 is open on your PC and your company is loaded.",
-            "download_url": "/api/download/Sun_Tally_Sync.bat"
-        })
+        if is_cloud:
+            return jsonify({
+                "status": "cloud_mode",
+                "connected": False,
+                "is_cloud": True,
+                "message": "Cloud Mode: This dashboard is hosted on Railway Cloud, so it cannot directly query Port 9000 on your local PC across the internet.",
+                "suggestion": "Please double-click 'Sun_Tally_Sync.bat' on your PC (or click the Download button below). It connects to your local Tally (Port 9000) and securely uploads all vouchers here.",
+                "download_url": "/api/download/Sun_Tally_Sync.bat"
+            })
+        else:
+            return jsonify({
+                "status": "offline",
+                "connected": False,
+                "is_cloud": False,
+                "message": "Local Tally is not responding on Port 9000.",
+                "suggestion": "Please ensure Tally 7.1 / Prime is open on your PC and your company is loaded.",
+                "download_url": "/api/download/Sun_Tally_Sync.bat"
+            })
 
     companies = client.get_loaded_companies()
     if not companies:

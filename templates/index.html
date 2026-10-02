@@ -189,15 +189,15 @@
       </a>
       
       <!-- System Health Indicator -->
-      <div class="mt-2 p-2.5 rounded-xl bg-slate-50 border border-outline-variant flex items-center justify-between">
+      <div id="sidebar-tally-pill" class="mt-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between transition-colors">
         <div class="flex items-center gap-2">
           <span class="relative flex h-2 w-2">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 bg-secondary"></span>
+            <span id="sidebar-tally-ping" class="hidden animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
+            <span id="sidebar-tally-dot" class="relative inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
           </span>
           <span class="text-xs text-on-surface-variant font-medium" id="tally-status-text">Tally Service</span>
         </div>
-        <span class="font-mono text-xs text-secondary font-bold">9000 UP</span>
+        <span id="tally-port-badge" class="font-mono text-xs text-slate-500 font-bold">CHECKING...</span>
       </div>
     </div>
   </aside>
@@ -240,12 +240,12 @@
             </button>
           </div>
         </div>
-        <div class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800">
+        <div id="header-tally-badge" class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 transition-colors">
           <span class="relative flex h-2 w-2">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+            <span id="header-tally-ping" class="hidden animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
+            <span id="header-tally-dot" class="relative inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
           </span>
-          <span class="font-mono text-xs text-emerald-700 font-semibold">Tally 7.1 / Prime: Port 9000 Active</span>
+          <span id="header-tally-text" class="font-mono text-xs text-slate-600 font-semibold">Tally 7.1: Standby</span>
         </div>
       </div>
 
