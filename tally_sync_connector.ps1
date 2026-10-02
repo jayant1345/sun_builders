@@ -33,10 +33,10 @@ try {
 
     $activeComp = $companies[0]
     Write-Host ('[2/4] Connected to Tally! Loaded Company: ' + $activeComp) -ForegroundColor Green
-    Write-Host '[3/4] Querying live Tally Daybook via XML API...' -ForegroundColor Cyan
+    Write-Host '[3/4] Querying live Tally Daybook via XML API (this can take a few minutes for companies with a long voucher history)...' -ForegroundColor Cyan
 
     $vchReqXml = '<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>Voucher Register</ID></HEADER><BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>' + $activeComp + '</SVCURRENTCOMPANY><SVFROMDATE>20000101</SVFROMDATE><SVTODATE>20991231</SVTODATE><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY></ENVELOPE>'
-    $vchResp = Invoke-RestMethod -Uri $tallyUrl -Method Post -Body $vchReqXml -ContentType 'text/xml' -TimeoutSec 30
+    $vchResp = Invoke-RestMethod -Uri $tallyUrl -Method Post -Body $vchReqXml -ContentType 'text/xml' -TimeoutSec 600
     [xml]$vxml = $vchResp
     $vchs = @($vxml.SelectNodes('//VOUCHER'))
     Write-Host ('[OK] Extracted ' + $vchs.Count + ' vouchers from Tally.') -ForegroundColor Green

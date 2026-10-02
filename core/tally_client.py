@@ -72,7 +72,7 @@ class TallyClient:
             </BODY>
         </ENVELOPE>"""
         req = urllib.request.Request(self.url, data=req_xml.encode('utf-8'), headers={'Content-Type': 'text/xml'})
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=600) as resp:
             return resp.read().decode('utf-8', errors='ignore')
 
     def parse_vouchers(self, raw_xml: str) -> list:
