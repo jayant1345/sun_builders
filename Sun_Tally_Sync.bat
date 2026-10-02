@@ -45,7 +45,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     $activeComp = $companies[0]; ^
     Write-Host ('[2/4] Connected to Tally! Loaded Company: ' + $activeComp) -ForegroundColor Green; ^
     Write-Host '[3/4] Querying live Tally Daybook via XML API...' -ForegroundColor Cyan; ^
-    $vchReqXml = '<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>Voucher Register</ID></HEADER><BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>' + $activeComp + '</SVCURRENTCOMPANY><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY></ENVELOPE>'; ^
+    $vchReqXml = '<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>Voucher Register</ID></HEADER><BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>' + $activeComp + '</SVCURRENTCOMPANY><SVFROMDATE>20000101</SVFROMDATE><SVTODATE>20991231</SVTODATE><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY></ENVELOPE>'; ^
     $vchResp = Invoke-RestMethod -Uri $tallyUrl -Method Post -Body $vchReqXml -ContentType 'text/xml' -TimeoutSec 30; ^
     [xml]$vxml = $vchResp; ^
     $vchs = @($vxml.SelectNodes('//VOUCHER')); ^

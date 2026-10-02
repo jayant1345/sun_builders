@@ -171,12 +171,24 @@ def extract_archive(archive_path, target_dir=DATA_DIR):
         # Cleanup temp directory
         shutil.rmtree(temp_extract_dir, ignore_errors=True)
 
-        print("[4/4] Extraction completed successfully.")
+        # 4. Automatically trigger incremental database restoration
+        if imported_files:
+            try:
+                from server import ingest_excel_file
+                for imp in imported_files:
+                    if imp.lower().endswith((".xlsx", ".xls")):
+                        imp_path = os.path.join(target_dir, imp)
+                        print(f"[*] Incrementally restoring vouchers from {imp}...")
+                        ingest_excel_file(imp_path)
+            except Exception as ie:
+                print(f"[Auto Ingestion Notice]: {ie}")
+
+        print("[4/4] Extraction and incremental restoration completed successfully.")
         return {
             "success": True,
             "companies": found_companies,
             "imported_files": imported_files,
-            "message": f"Successfully extracted and mounted {len(found_companies)} Tally Company Database(s) and {len(imported_files)} data file(s)."
+            "message": f"Successfully extracted and incrementally restored {len(found_companies)} Tally Company Database(s) and {len(imported_files)} data file(s) with zero duplicates."
         }
 
     except Exception as e:

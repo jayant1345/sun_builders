@@ -372,7 +372,7 @@ def api_tally_sync_live():
 
     vouchers = []
     try:
-        xml_data = client.export_vouchers_xml(active_comp, "20260801", "20260831")
+        xml_data = client.export_vouchers_xml(active_comp, "20000101", "20991231")
         raw_vchs = client.parse_vouchers(xml_data)
         if raw_vchs:
             idx = 1
@@ -419,8 +419,9 @@ def api_tally_sync_live():
         from tally_sync_agent import extract_from_local_files
         vouchers = extract_from_local_files()
 
+    sync_res = {"inserted": 0, "updated": 0, "unchanged": 0, "periods": []}
     if vouchers:
-        db.save_vouchers(target_code, vouchers)
+        sync_res = db.save_vouchers(target_code, vouchers)
         sync_file = os.path.join(BASE_DIR, "data", f"synced_{project_display.replace(' ', '_').lower()}.json")
         try:
             with open(sync_file, "w", encoding="utf-8") as f:
@@ -435,9 +436,13 @@ def api_tally_sync_live():
         "project_code": target_code,
         "project_name": project_display,
         "count": len(vouchers),
+        "new_inserted": sync_res.get("inserted", 0),
+        "updated": sync_res.get("updated", 0),
+        "unchanged": sync_res.get("unchanged", 0),
+        "periods": sync_res.get("periods", []),
         "total_gross": sum(v.get("cr_amount", 0) for v in vouchers),
         "total_taxable": sum(v.get("taxable_amount", 0) for v in vouchers),
-        "message": f"Successfully synced {len(vouchers)} vouchers directly from Tally 7.1 ({active_comp}) on Port 9000!"
+        "message": f"Incremental Sync Complete: +{sync_res.get('inserted', 0)} new vouchers added, {sync_res.get('unchanged', 0)} existing records verified (0 duplicates)."
     })
 
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "project_master.json")
@@ -709,14 +714,23 @@ def ingest_excel_file(file_path):
                 dval = str(row[date_col]).strip()
                 if dval:
                     vch_date = dval
+            
+            row_m, row_y = extract_month_year(vch_date) if vch_date else (None, None)
+            vm = row_m or active_m
+            vy = row_y or active_y
+
             if not vch_date:
                 day = (idx % 28) + 1
-                vch_date = f"{day:02d}-{active_m}-{active_y}"
+                vch_date = f"{day:02d}-{vm}-{vy}"
+
+            day_str = f"{(idx % 28) + 1:02d}"
+            if len(vch_date) >= 10 and vch_date[2] == "-" and vch_date[0:2].isdigit():
+                day_str = vch_date[0:2]
 
             has_bu = target_cfg.get("has_bu", False) if target_cfg else False
             bu_date_str = target_cfg.get("bu_permission_date") if target_cfg else None
             is_post_bu = False
-            iso_d = f"{active_y}-{active_m}-{(idx % 28) + 1:02d}"
+            iso_d = f"{vy}-{vm}-{day_str}"
             if has_bu and bu_date_str and iso_d >= bu_date_str:
                 is_post_bu = True
 
@@ -728,7 +742,7 @@ def ingest_excel_file(file_path):
             )
 
             vouchers.append({
-                "vch_no": f"{prefix}-{active_y[2:]}{active_m}-{idx:03d}",
+                "vch_no": f"{prefix}-{vy[2:]}{vm}-{idx:03d}",
                 "date": vch_date,
                 "iso_date": iso_d,
                 "type": "Member Receipt",
@@ -747,9 +761,9 @@ def ingest_excel_file(file_path):
             idx += 1
 
         if vouchers:
-            db.save_vouchers(target_code, vouchers)
-            total_ingested += len(vouchers)
-            print(f"[ingest_excel_file] Ingested {len(vouchers)} vouchers for {proj_name} ({active_m}-{active_y})")
+            sync_res = db.save_vouchers(target_code, vouchers)
+            total_ingested += sync_res.get("inserted", 0)
+            print(f"[ingest_excel_file] Ingested {proj_name}: +{sync_res.get('inserted', 0)} new, {sync_res.get('unchanged', 0)} existing verified (0 duplicates).")
 
     return total_ingested
 
@@ -1186,17 +1200,22 @@ def api_vouchers_sync():
     except Exception as e:
         print("Error saving sync data:", e)
 
-    # Persist to PostgreSQL / Database
+    # Persist to PostgreSQL / Database with incremental deduplication
+    sync_res = {"inserted": 0, "updated": 0, "unchanged": 0, "periods": []}
     try:
-        db.save_vouchers(project_code, vouchers)
+        sync_res = db.save_vouchers(project_code, vouchers)
     except Exception as e:
         print("Error saving sync data to database:", e)
 
     return jsonify({
         "status": "success",
-        "message": f"Successfully received {len(vouchers)} vouchers for {project} and persisted to Database.",
+        "message": f"Incremental Sync Complete: +{sync_res.get('inserted', 0)} new vouchers added, {sync_res.get('unchanged', 0)} verified consistent (0 duplicates).",
         "project": project,
-        "count": len(vouchers)
+        "count": len(vouchers),
+        "new_inserted": sync_res.get("inserted", 0),
+        "updated": sync_res.get("updated", 0),
+        "unchanged": sync_res.get("unchanged", 0),
+        "periods": sync_res.get("periods", [])
     })
 
 

@@ -40,7 +40,7 @@ class TallyClient:
             print(f"[TallyClient] Error getting companies: {e}")
             return []
 
-    def export_vouchers_xml(self, company_name: str, from_date_yyyymmdd: str, to_date_yyyymmdd: str) -> str:
+    def export_vouchers_xml(self, company_name: str, from_date_yyyymmdd: str = "20000101", to_date_yyyymmdd: str = "20991231") -> str:
         """
         Exports all vouchers for the specified company and date range in native Tally XML format.
         """

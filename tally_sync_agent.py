@@ -129,7 +129,7 @@ def sync_to_railway(railway_url="http://localhost:5050", project_name="Sun Footp
             project_name = comp_name
             print(f"[*] Querying live Tally Daybook for '{comp_name}'...")
             try:
-                xml_data = client.export_vouchers_xml(comp_name, "20260801", "20260831")
+                xml_data = client.export_vouchers_xml(comp_name, "20000101", "20991231")
                 raw_vchs = client.parse_vouchers(xml_data)
                 print(f"[OK] Extracted {len(raw_vchs)} live vouchers from Tally.")
                 if raw_vchs:
