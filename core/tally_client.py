@@ -14,17 +14,17 @@ class TallyClient:
             self.url = f"http://{host}:{port}"
 
     def is_connected(self) -> bool:
-        """Checks if Tally is running and responding on the specified port."""
-        try:
-            with urllib.request.urlopen(self.url, timeout=3) as resp:
-                return resp.status == 200
-        except Exception:
-            pass
+        """Checks if Tally is running by sending a real Tally XML request and
+        verifying the response actually parses as Tally XML. A bare HTTP 200
+        is not enough, since other local dev tools can also listen on 9000."""
         try:
             req_xml = """<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Companies</ID></HEADER><BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY></ENVELOPE>"""
             req = urllib.request.Request(self.url, data=req_xml.encode('utf-8'), headers={'Content-Type': 'text/xml'})
             with urllib.request.urlopen(req, timeout=3) as resp:
-                return resp.status == 200
+                if resp.status != 200:
+                    return False
+                ET.fromstring(resp.read())
+                return True
         except Exception:
             return False
 

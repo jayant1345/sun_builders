@@ -463,6 +463,7 @@ function updateOverviewCards(data) {
 
 document.addEventListener('DOMContentLoaded', () => {
     checkStatus();
+    setInterval(checkStatus, 8000);
     loadRealVouchers();
 
     // Setup Project Selector Dropdowns (Header & Voucher Tab)
