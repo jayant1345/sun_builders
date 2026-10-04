@@ -45,6 +45,7 @@ class DatabaseManager:
         
         print(f"[DatabaseManager] Initialized. Engine: {'PostgreSQL' if self.is_postgres else 'SQLite'}")
         self.init_db()
+        self.purge_fake_vouchers()
 
     def get_connection(self):
         if self.is_postgres:
@@ -431,5 +432,26 @@ class DatabaseManager:
         return counts
 
 
+    def purge_fake_vouchers(self):
+        """Purges any synthetic / mock vouchers (e.g. FP-2608-*) from the database."""
+        deleted_count = 0
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("DELETE FROM vouchers WHERE voucher_number LIKE 'FP-%' OR voucher_number LIKE 'FP-2608-%' OR voucher_number LIKE 'VCH-FP-%'")
+                    deleted_count = cur.rowcount
+                else:
+                    cur.execute("DELETE FROM vouchers WHERE voucher_number LIKE 'FP-%' OR voucher_number LIKE 'FP-2608-%' OR voucher_number LIKE 'VCH-FP-%'")
+                    deleted_count = cur.rowcount
+                conn.commit()
+                if deleted_count > 0:
+                    print(f"[DatabaseManager] Purged {deleted_count} synthetic Excel vouchers.")
+        except Exception as e:
+            print(f"[DatabaseManager] Purge error: {e}")
+        return deleted_count
+
+
 # Singleton instance
 db = DatabaseManager()
+

@@ -1207,6 +1207,16 @@ def api_vouchers_sync():
         "periods": sync_res.get("periods", [])
     })
 
+@app.route("/api/vouchers/purge_fake", methods=["POST", "GET"])
+def api_vouchers_purge_fake():
+    """Purges any synthetic / Excel-extracted mock vouchers (e.g. FP-2608-*) from DB."""
+    purged_count = db.purge_fake_vouchers()
+    return jsonify({
+        "status": "success",
+        "purged_count": purged_count,
+        "message": f"Successfully purged {purged_count} synthetic vouchers. Only 100% authentic Tally vouchers remain in the database."
+    })
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
