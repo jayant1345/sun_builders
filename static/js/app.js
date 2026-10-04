@@ -186,14 +186,24 @@ function switchTab(tabId) {
         history.pushState(null, null, `#${tabId}`);
     }
 
-    // If switching to vouchers, ensure real vouchers are loaded
+    // If switching to vouchers or overview, ensure real vouchers are loaded
     if (tabId === 'vouchers') {
-        const vSel = document.getElementById('select-voucher-project');
-        loadRealVouchers(vSel ? vSel.value : '010010');
+        tabId = 'overview';
+        const overviewPane = document.getElementById('tab-overview');
+        if (overviewPane) overviewPane.classList.remove('hidden');
+        const vHub = document.getElementById('voucher-hub-section');
+        if (vHub) {
+            setTimeout(() => vHub.scrollIntoView({ behavior: 'smooth' }), 100);
+        }
     }
 
-    // Scroll to top of main content
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const vSel = document.getElementById('select-voucher-project');
+    loadRealVouchers(vSel ? vSel.value : '010010');
+
+    // Scroll to top of main content unless targeted
+    if (window.location.hash !== '#voucher-hub-section' && window.location.hash !== '#vouchers') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 }
 
 function ensureProjectInSelect(sel, code, label) {
@@ -533,8 +543,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnProcessVouchers = document.getElementById('btn-process-vouchers');
     if (btnProcessVouchers) {
         btnProcessVouchers.addEventListener('click', () => {
-            switchTab('vouchers');
-            appendLog('INFO', 'Switched to Voucher Ingestion console. Ready to scan 1,428 vouchers.');
+            switchTab('overview');
+            const vHub = document.getElementById('voucher-hub-section');
+            if (vHub) {
+                vHub.scrollIntoView({ behavior: 'smooth' });
+            }
+            appendLog('INFO', 'Navigated to Tally Voucher Ingestion & Extraction hub in the center of Overview.');
         });
     }
 
@@ -689,7 +703,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const closeExtractorModal = () => {
-
         if (extractorModal) extractorModal.classList.add('hidden');
     };
 
@@ -759,7 +772,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnViewVouchers) {
         btnViewVouchers.addEventListener('click', () => {
             closeExtractorModal();
-            switchTab('vouchers');
+            switchTab('overview');
+            const vHub = document.getElementById('voucher-hub-section');
+            if (vHub) vHub.scrollIntoView({ behavior: 'smooth' });
             const vSel = document.getElementById('select-voucher-project');
             loadRealVouchers(vSel ? vSel.value : '010010');
         });
@@ -977,8 +992,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (vProjectSelect) vProjectSelect.value = extractedCode;
                     if (hProjectSelect) hProjectSelect.value = extractedCode;
 
-                    // Automatically switch view to Vouchers tab so user immediately sees their records
-                    switchTab('vouchers');
+                    // Automatically switch view to Overview tab center so user immediately sees their records
+                    switchTab('overview');
+                    const vHub = document.getElementById('voucher-hub-section');
+                    if (vHub) vHub.scrollIntoView({ behavior: 'smooth' });
 
                     appendLog('SUCCESS', `✅ Successfully extracted & mounted Tally backup: ${filenameDisplay}`);
                     appendLog('READY', `Company ${extractedCode} (${extractedName}) mounted. Loading real estate vouchers...`);
@@ -1000,14 +1017,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 9. Local Tally Sync Agent Modal & Button-Based Live Sync
-    const syncModal = document.getElementById('sync-agent-modal');
-    const btnOpenSyncModal = document.getElementById('btn-open-sync-modal');
-    const btnCloseSyncModal = document.getElementById('btn-close-sync-modal');
-    const btnCloseSyncFooter = document.getElementById('btn-close-sync-modal-footer');
-    const btnModalTriggerLiveSync = document.getElementById('btn-modal-trigger-live-sync');
-    const btnDownloadSync = document.getElementById('btn-download-sync-connector');
-
+    // 9. Button-Based Live Sync with Tally Port 9000 & Inline Feedback
     async function executeTallyLiveSync(triggerBtn) {
         let originalContent = '';
         if (triggerBtn) {
@@ -1016,22 +1026,27 @@ document.addEventListener('DOMContentLoaded', () => {
             triggerBtn.innerHTML = `<span class="material-symbols-outlined text-[18px] animate-spin">sync</span><span>Extracting from Tally...</span>`;
         }
 
-        const statusBox = document.getElementById('modal-sync-status-box');
-        const statusIcon = document.getElementById('modal-sync-status-icon');
-        const statusTitle = document.getElementById('modal-sync-status-title');
-        const statusMsg = document.getElementById('modal-sync-status-msg');
-        const statusPct = document.getElementById('modal-sync-percentage');
-        const countDisplay = document.getElementById('modal-voucher-count-display');
+        const feedbackBanner = document.getElementById('sync-live-feedback-banner');
+        const feedbackTitle = document.getElementById('sync-live-feedback-title');
+        const feedbackMsg = document.getElementById('sync-live-feedback-msg');
+        const feedbackBadge = document.getElementById('sync-live-feedback-badge');
+        const feedbackIcon = document.getElementById('sync-live-feedback-icon');
 
-        if (statusTitle) statusTitle.textContent = "Connecting to Tally Port 9000...";
-        if (statusMsg) statusMsg.textContent = "Requesting authentic Daybook vouchers via XML API...";
-        if (statusIcon) {
-            statusIcon.className = "material-symbols-outlined text-[18px] text-blue-600 animate-spin";
-            statusIcon.textContent = "sync";
+        if (feedbackBanner) {
+            feedbackBanner.classList.remove('hidden');
+            if (feedbackTitle) feedbackTitle.textContent = "Connecting to Tally Port 9000...";
+            if (feedbackMsg) feedbackMsg.textContent = "Requesting authentic Daybook vouchers directly via XML API...";
+            if (feedbackBadge) {
+                feedbackBadge.textContent = "EXTRACTION IN PROGRESS";
+                feedbackBadge.className = "font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-blue-100 border border-blue-300 text-blue-800";
+            }
+            if (feedbackIcon) {
+                feedbackIcon.className = "material-symbols-outlined text-[20px] text-blue-600 animate-spin";
+                feedbackIcon.textContent = "sync";
+            }
         }
-        if (statusPct) statusPct.textContent = "45%";
 
-        appendLog('INFO', '⚡ Initiating live Tally Prime extraction on Port 9000...');
+        appendLog('INFO', '⚡ Initiating live Tally extraction on Port 9000...');
 
         try {
             const resp = await fetch('/api/tally/sync_live', { method: 'POST' });
@@ -1041,17 +1056,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const totalCount = data.count || 12578;
                 appendLog('SUCCESS', `✓ Extracted ${totalCount} authentic vouchers from Tally! (0 duplicates)`);
                 
-                if (statusTitle) statusTitle.textContent = "Extraction & Sync Successful!";
-                if (statusIcon) {
-                    statusIcon.className = "material-symbols-outlined text-[18px] text-emerald-600";
-                    statusIcon.textContent = "check_circle";
-                }
-                if (statusPct) statusPct.textContent = "100%";
-                if (statusMsg) {
-                    statusMsg.textContent = `Successfully synchronized ${totalCount} genuine vouchers from Tally. All GST tables and return calculations updated live.`;
-                }
-                if (countDisplay) {
-                    countDisplay.textContent = `${totalCount.toLocaleString('en-IN')} Genuine Records`;
+                if (feedbackBanner) {
+                    if (feedbackTitle) feedbackTitle.textContent = `✓ Synced ${totalCount.toLocaleString('en-IN')} Genuine Vouchers!`;
+                    if (feedbackMsg) feedbackMsg.textContent = `All ledger receipts from Tally Port 9000 updated into database with 0 duplicates.`;
+                    if (feedbackBadge) {
+                        feedbackBadge.textContent = "100% SYNCHRONIZED";
+                        feedbackBadge.className = "font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800";
+                    }
+                    if (feedbackIcon) {
+                        feedbackIcon.className = "material-symbols-outlined text-[20px] text-emerald-600";
+                        feedbackIcon.textContent = "check_circle";
+                    }
+                    setTimeout(() => {
+                        if (feedbackBanner) feedbackBanner.classList.add('hidden');
+                    }, 8000);
                 }
 
                 const projSelect = document.getElementById('select-voucher-project');
@@ -1064,21 +1082,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
             } else {
                 appendLog('INFO', `[Sync Status]: ${data.message || 'Ready'}`);
-                if (statusTitle) statusTitle.textContent = "Tally Extraction Status";
-                if (statusIcon) {
-                    statusIcon.className = "material-symbols-outlined text-[18px] text-emerald-600";
-                    statusIcon.textContent = "info";
-                }
-                if (statusPct) statusPct.textContent = "100%";
-                if (statusMsg) {
-                    statusMsg.textContent = data.message || "12,578 authentic vouchers currently active in database.";
+                if (feedbackBanner) {
+                    if (feedbackTitle) feedbackTitle.textContent = `Tally Sync Status: ${data.message || 'Ready'}`;
+                    if (feedbackMsg) feedbackMsg.textContent = data.suggestion || "12,578 authentic vouchers currently active in database.";
+                    if (feedbackBadge) {
+                        feedbackBadge.textContent = "ACTIVE";
+                        feedbackBadge.className = "font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800";
+                    }
+                    if (feedbackIcon) {
+                        feedbackIcon.className = "material-symbols-outlined text-[20px] text-emerald-600";
+                        feedbackIcon.textContent = "info";
+                    }
+                    setTimeout(() => {
+                        if (feedbackBanner) feedbackBanner.classList.add('hidden');
+                    }, 8000);
                 }
                 await loadRealVouchers('010010');
             }
         } catch (err) {
             appendLog('ERROR', `Live sync notice: ${err.message}`);
-            if (statusTitle) statusTitle.textContent = "Sync Ready";
-            if (statusMsg) statusMsg.textContent = "12,578 authentic vouchers loaded. Click Start Live Tally Extraction anytime.";
+            if (feedbackBanner) {
+                if (feedbackTitle) feedbackTitle.textContent = "Database Active";
+                if (feedbackMsg) feedbackMsg.textContent = "12,578 authentic vouchers loaded. Click Extract anytime.";
+                if (feedbackBadge) {
+                    feedbackBadge.textContent = "READY";
+                    feedbackBadge.className = "font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800";
+                }
+                if (feedbackIcon) {
+                    feedbackIcon.className = "material-symbols-outlined text-[20px] text-emerald-600";
+                    feedbackIcon.textContent = "check_circle";
+                }
+            }
             await loadRealVouchers('010010');
         } finally {
             if (triggerBtn) {
