@@ -42,6 +42,13 @@ def get_config():
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -55,11 +62,12 @@ def api_status():
     companies = []
     if connected:
         companies = client.get_loaded_companies()
-    elif is_cloud:
-        companies = ["SUN BUILDERS PROJECTS LLP SUN PARK WEST-ADXFS1402N"]
 
-    active_name = companies[0] if companies else "SUN BUILDERS PROJECTS LLP SUN PARK WEST-ADXFS1402N"
-    active_code = "010011" if "PARK WEST" in active_name.upper() else "010010"
+    active_name = companies[0] if companies else None
+    active_code = None
+    if active_name:
+        from tally_sync_agent import resolve_company_code
+        active_code, _ = resolve_company_code(active_name)
 
     return jsonify({
         "is_cloud": is_cloud,
@@ -167,118 +175,52 @@ def api_download(filename):
 
 
 
-@app.route("/api/tally/sync_live", methods=["POST"])
+@app.route("/api/tally/sync_live", methods=["POST", "OPTIONS"])
 def api_tally_sync_live():
     """
     Live voucher ingestion and synchronization endpoint.
-    Extracts complete historical dump from Tally on Port 9000,
+    Extracts complete historical dump from whichever company is open in Tally on Port 9000,
     enforces 100% duplicate prevention, and returns rich voucher details.
     """
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
     is_cloud = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_STATIC_URL") or os.environ.get("DYNO") or os.environ.get("RENDER") or (os.environ.get("PORT") and not os.path.exists(r"C:\Windows")))
     client = TallyClient()
     connected = client.is_connected()
 
+    if not connected:
+        return jsonify({
+            "status": "offline",
+            "connected": False,
+            "is_cloud": is_cloud,
+            "message": "Port 9000 is OFFLINE or Tally Prime is closed. Please ensure Tally Prime is running with your active company (or run locally at http://localhost:5050).",
+            "company": None,
+            "count": 0,
+            "vouchers": []
+        }), 200
+
     from tally_sync_agent import resolve_company_code, extract_from_live_tally
 
-    active_comp = None
-    if connected:
-        companies = client.get_loaded_companies()
-        if companies:
-            active_comp = companies[0]
+    companies = client.get_loaded_companies()
+    if not companies:
+        return jsonify({
+            "status": "warning",
+            "connected": True,
+            "is_cloud": is_cloud,
+            "message": "Tally Prime is online on Port 9000, but NO Company is currently open in Tally. Please open your company in Tally (e.g. Gravitas, Footprint).",
+            "company": None,
+            "count": 0,
+            "vouchers": []
+        }), 200
 
-    # Handle local vs cloud extraction
-    vouchers = []
-    active_company_name = active_comp or "SUN BUILDERS PROJECTS LLP SUN PARK WEST-ADXFS1402N"
+    active_company_name = companies[0]
     target_code, project_display = resolve_company_code(active_company_name)
 
-    if connected:
-        try:
-            comp_extracted, vouchers = extract_from_live_tally("http://localhost:9000")
-            if comp_extracted:
-                active_company_name = comp_extracted
-                target_code, project_display = resolve_company_code(active_company_name)
-        except Exception as e:
-            print("[sync_live extraction notice]:", e)
-
-    # If no live vouchers extracted (e.g. on cloud or cached fallback)
-    if not vouchers:
-        # Load from database
-        db_rows = db.get_vouchers(target_code)
-        if not db_rows and target_code != "010010":
-            target_code = "010010"
-            project_display = "Sun Footprint"
-            db_rows = db.get_vouchers(target_code)
-
-        if db_rows:
-            for r in db_rows:
-                amt = float(r.get("amount") or 0)
-                is_ex = bool(r.get("is_exempt"))
-                vouchers.append({
-                    "vch_no": r.get("voucher_number") or "",
-                    "date": r.get("date") or "",
-                    "unit": r.get("unit_no") or r.get("block_no") or "—",
-                    "flat_no": r.get("unit_no") or r.get("block_no") or "—",
-                    "name": r.get("party_name", ""),
-                    "member_name": r.get("party_name", ""),
-                    "project": project_display,
-                    "cr_amount": amt,
-                    "deductions": 0.0,
-                    "taxable_amount": 0.0 if is_ex else amt,
-                    "classification": r.get("classification", "Standard GST (5%)"),
-                    "badge_type": "exempt" if is_ex else "taxable-5"
-                })
-
-        if not vouchers:
-            for cname in [f"synced_{project_display.replace(' ', '_').lower()}.json", "synced_sun_park_west.json", "synced_sun_footprint.json"]:
-                cfile = os.path.join(BASE_DIR, "data", cname)
-                if os.path.exists(cfile):
-                    try:
-                        with open(cfile, "r", encoding="utf-8") as f:
-                            cj = json.load(f)
-                            vouchers = cj.get("vouchers", [])
-                            if vouchers:
-                                break
-                    except Exception:
-                        pass
-
-    # Save and prevent duplicates in database
-    sync_res = {"inserted": 0, "updated": 0, "unchanged": len(vouchers), "periods": []}
-    cloud_synced = False
-    if vouchers:
-        sync_res = db.save_vouchers(target_code, vouchers)
-        sync_file = os.path.join(BASE_DIR, "data", f"synced_{project_display.replace(' ', '_').lower()}.json")
-        try:
-            with open(sync_file, "w", encoding="utf-8") as f:
-                json.dump({
-                    "project": project_display,
-                    "company_code": target_code,
-                    "company_name": active_company_name,
-                    "synced_at": datetime.now().isoformat(),
-                    "vouchers": vouchers
-                }, f, indent=2)
-        except Exception:
-            pass
-
-        # Push to Railway Cloud if running locally
-        if not is_cloud:
-            try:
-                import urllib.request
-                railway_endpoint = "https://sunbuilders-production.up.railway.app/api/vouchers/sync"
-                req_cloud = urllib.request.Request(
-                    railway_endpoint,
-                    data=json.dumps({
-                        "project": project_display,
-                        "company_code": target_code,
-                        "source": f"Live Tally - {active_company_name}",
-                        "count": len(vouchers),
-                        "vouchers": vouchers
-                    }).encode("utf-8"),
-                    headers={"Content-Type": "application/json"}
-                )
-                with urllib.request.urlopen(req_cloud, timeout=12) as c_resp:
-                    cloud_synced = True
-            except Exception as _ce:
-                print(f"[Cloud Sync Note]: {_ce}")
+    comp_extracted, vouchers = extract_from_live_tally("http://localhost:9000")
+    if comp_extracted:
+        active_company_name = comp_extracted
+        target_code, project_display = resolve_company_code(active_company_name)
 
     # Strict in-memory deduplication to guarantee zero duplicate vouchers
     unique_vouchers = []
@@ -295,13 +237,51 @@ def api_tally_sync_live():
         unique_vouchers.append(v)
     vouchers = unique_vouchers
 
+    # Save to database
+    sync_res = db.save_vouchers(target_code, vouchers)
+
+    sync_file = os.path.join(BASE_DIR, "data", f"synced_{project_display.replace(' ', '_').lower()}.json")
+    try:
+        with open(sync_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "project": project_display,
+                "company_code": target_code,
+                "company_name": active_company_name,
+                "synced_at": datetime.now().isoformat(),
+                "vouchers": vouchers
+            }, f, indent=2)
+    except Exception:
+        pass
+
+    # Push to Railway Cloud if running locally
+    cloud_synced = False
+    if not is_cloud:
+        try:
+            import urllib.request
+            railway_endpoint = "https://sunbuilders-production.up.railway.app/api/vouchers/sync"
+            req_cloud = urllib.request.Request(
+                railway_endpoint,
+                data=json.dumps({
+                    "project": project_display,
+                    "company_code": target_code,
+                    "source": f"Live Tally - {active_company_name}",
+                    "count": len(vouchers),
+                    "vouchers": vouchers
+                }).encode("utf-8"),
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req_cloud, timeout=12) as c_resp:
+                cloud_synced = True
+        except Exception as _ce:
+            print(f"[Cloud Sync Note]: {_ce}")
+
     total_gross = sum(float(v.get("cr_amount", 0) or v.get("amount", 0)) for v in vouchers)
     total_deductions = sum(float(v.get("deductions", 0) or 0) for v in vouchers)
     total_taxable = sum(float(v.get("taxable_amount", 0) or 0) for v in vouchers)
 
     return jsonify({
         "status": "success",
-        "connected": connected,
+        "connected": True,
         "is_cloud": is_cloud,
         "company": active_company_name,
         "project_code": target_code,
@@ -311,13 +291,13 @@ def api_tally_sync_live():
         "new_inserted": sync_res.get("inserted", 0),
         "updated": sync_res.get("updated", 0),
         "unchanged": sync_res.get("unchanged", len(vouchers)),
-        "duplicates_prevented": len(seen_vch_keys) - len(vouchers) if len(seen_vch_keys) > len(vouchers) else sync_res.get("unchanged", len(vouchers)),
+        "duplicates_prevented": sync_res.get("unchanged", len(vouchers)),
         "periods": list(sync_res.get("periods", [])),
         "total_gross": total_gross,
         "total_deductions": total_deductions,
         "total_taxable": total_taxable,
         "vouchers": vouchers,
-        "message": f"Full Tally Dump Synchronized: {len(vouchers)} vouchers loaded with 0 duplicates ({sync_res.get('inserted', 0)} new, {sync_res.get('unchanged', len(vouchers))} consistent)."
+        "message": f"Full Tally Dump Synchronized from {active_company_name}: {len(vouchers)} vouchers loaded with 0 duplicates ({sync_res.get('inserted', 0)} new, {sync_res.get('unchanged', len(vouchers))} consistent)."
     })
 
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "project_master.json")

@@ -16,36 +16,11 @@ async function checkStatus() {
         const headerDot = document.getElementById('header-tally-dot');
         const headerText = document.getElementById('header-tally-text');
 
-        if (data.is_cloud) {
-            // Running on Railway Cloud with synchronized authentic Tally database
-            if (tallyStatusElem) tallyStatusElem.textContent = 'Railway Cloud';
-            if (tallyPortBadge) {
-                tallyPortBadge.textContent = 'PORT 9000 SYNCED';
-                tallyPortBadge.className = 'font-mono text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200';
-            }
-            if (sidebarDot) sidebarDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
-            if (sidebarPing) sidebarPing.classList.add('hidden');
-
-            if (headerBadge) {
-                headerBadge.className = 'hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800';
-            }
-            if (headerText) {
-                headerText.textContent = data.active_company ? `Tally Synced: ${data.active_company}` : 'Railway Cloud: Tally 9000 Synced';
-                headerText.className = 'font-mono text-xs text-emerald-700 font-semibold';
-            }
-            if (headerDot) headerDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
-            if (headerPing) headerPing.classList.add('hidden');
-
-            const barComp = document.getElementById('bar-active-company');
-            if (barComp && data.active_company) {
-                barComp.textContent = data.active_company;
-            }
-
-        } else if (data.tally_connected) {
-            // Running locally with Tally port 9000 active!
-            const comp = (data.loaded_companies && data.loaded_companies.length > 0) ? data.loaded_companies[0] : null;
+        if (data.tally_connected) {
+            // Tally port 9000 is genuinely active on this host!
+            const comp = (data.loaded_companies && data.loaded_companies.length > 0) ? data.loaded_companies[0] : data.active_company;
             if (comp) {
-                if (tallyStatusElem) tallyStatusElem.textContent = 'Tally 7.1 / Prime';
+                if (tallyStatusElem) tallyStatusElem.textContent = 'Tally Prime / ERP';
                 if (tallyPortBadge) {
                     tallyPortBadge.textContent = 'PORT 9000 LIVE';
                     tallyPortBadge.className = 'font-mono text-xs text-emerald-700 font-bold';
@@ -86,11 +61,15 @@ async function checkStatus() {
                 if (headerDot) headerDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
                 if (headerPing) headerPing.classList.add('hidden');
             }
+
+            const syncSourceText = document.getElementById('sync-source-text');
+            if (syncSourceText) syncSourceText.textContent = comp ? `Port 9000: ${comp}` : 'Port 9000 Connected';
+
         } else {
-            // Local but Tally is closed
-            if (tallyStatusElem) tallyStatusElem.textContent = 'Tally Service';
+            // Tally is closed or port 9000 is not reachable
+            if (tallyStatusElem) tallyStatusElem.textContent = data.is_cloud ? 'Railway Cloud' : 'Tally Service';
             if (tallyPortBadge) {
-                tallyPortBadge.textContent = 'OFFLINE (9000)';
+                tallyPortBadge.textContent = 'PORT 9000 OFFLINE';
                 tallyPortBadge.className = 'font-mono text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded';
             }
             if (sidebarDot) sidebarDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-slate-400';
@@ -100,15 +79,19 @@ async function checkStatus() {
                 headerBadge.className = 'hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600';
             }
             if (headerText) {
-                headerText.textContent = 'Tally 7.1: Standby (Port 9000)';
+                headerText.textContent = 'Tally Port 9000: OFFLINE (Tally Closed)';
                 headerText.className = 'font-mono text-xs text-slate-600 font-semibold';
             }
             if (headerDot) headerDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-slate-400';
+            if (headerPing) headerPing.classList.add('hidden');
+
+            const syncSourceText = document.getElementById('sync-source-text');
+            if (syncSourceText) syncSourceText.textContent = 'Port 9000 Offline (Tally Closed)';
         }
 
-        if (data.active_company) {
-            const barComp = document.getElementById('bar-active-company');
-            if (barComp) barComp.textContent = data.active_company;
+        const barComp = document.getElementById('bar-active-company');
+        if (barComp) {
+            barComp.textContent = data.active_company ? data.active_company : 'Tally Offline (Please open company in Tally)';
         }
         if (data.active_project_code) {
             const vSel = document.getElementById('select-voucher-project');
@@ -813,31 +796,96 @@ document.addEventListener('DOMContentLoaded', () => {
         if (termLogs) termLogs.innerHTML = '';
 
         setModalPipelineStage(1, "Handshaking Port 9000 XML Socket...", 20);
-        addModalLog("Connecting to local Tally socket http://localhost:9000...", "INFO");
+        addModalLog("Connecting to Tally socket http://localhost:9000...", "INFO");
         appendLog('INFO', '⚡ Initiating live Tally voucher ingestion on Port 9000...');
 
-        setTimeout(() => {
-            setModalPipelineStage(2, "Identifying Loaded Active Company in Tally...", 45);
-            addModalLog("Querying loaded company collection via XML API...", "INFO");
-        }, 300);
-
-        setTimeout(() => {
-            setModalPipelineStage(3, "Streaming Full Historical Daybook Vouchers...", 70);
-            addModalLog("Executing TDL Collection Export for all vouchers from inception...", "INFO");
-        }, 700);
-
         try {
-            const resp = await fetch('/api/tally/sync_live', { method: 'POST' });
-            const data = await resp.json();
+            let data = null;
+            // If accessing from Railway Cloud, first attempt to probe local PC Tally bridge
+            if (window.location.hostname.includes('railway.app')) {
+                addModalLog("Railway Cloud session detected. Connecting to local PC Tally bridge (http://127.0.0.1:5050)...", "INFO");
+                try {
+                    const localResp = await fetch('http://127.0.0.1:5050/api/tally/sync_live', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: AbortSignal.timeout(3000)
+                    });
+                    if (localResp.ok) {
+                        data = await localResp.json();
+                        addModalLog("Direct connection established to local PC Tally bridge (Port 5050 -> 9000)!", "SUCCESS");
+                    }
+                } catch (_e) {
+                    addModalLog("Local PC bridge http://127.0.0.1:5050 not reached from this browser tab. Querying server...", "INFO");
+                }
+            }
+
+            if (!data) {
+                const resp = await fetch('/api/tally/sync_live', { method: 'POST' });
+                data = await resp.json();
+            }
+
+            if (!data.connected || data.status === 'offline') {
+                setModalPipelineStage(1, "Port 9000 Disconnected (Tally is Closed)", 0);
+                addModalLog(`[OFFLINE] ${data.message || 'Port 9000 is closed or Tally Prime is not running.'}`, "ERROR");
+                addModalLog("Please ensure Tally Prime is open on this computer and your company is loaded.", "WARN");
+
+                const connBadgeText = document.getElementById('modal-conn-text');
+                if (connBadgeText) {
+                    connBadgeText.textContent = 'Port 9000 OFFLINE';
+                    if (connBadgeText.parentElement) {
+                        connBadgeText.parentElement.className = 'px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200 inline-flex items-center gap-1';
+                    }
+                }
+
+                const step1 = document.getElementById('step-pipe-1');
+                if (step1) {
+                    step1.className = "flex items-center gap-1.5 p-1.5 rounded-lg bg-red-50 border border-red-200 text-red-700 font-bold";
+                    step1.innerHTML = `<span class="material-symbols-outlined text-[15px] text-red-600">cancel</span><span class="truncate">1. Port 9000 Disconnected</span>`;
+                }
+
+                if (modalTbody) {
+                    modalTbody.innerHTML = `<tr><td colspan="9" class="text-center py-12 text-slate-700 font-sans">
+                        <div class="flex flex-col items-center justify-center gap-2.5">
+                            <span class="material-symbols-outlined text-[42px] text-red-500">wifi_off</span>
+                            <span class="font-bold text-base text-slate-900">Tally Prime is Closed or Port 9000 is Offline</span>
+                            <span class="text-xs text-slate-500 max-w-lg">
+                                ${data.message || 'No connection on http://localhost:9000.'}<br/>
+                                <strong class="text-slate-800">How to sync:</strong> 1. Open Tally Prime on this PC. 2. Open your project company (e.g. Gravitas). 3. Click "Re-Sync Tally (9000)".
+                            </span>
+                        </div>
+                    </td></tr>`;
+                }
+                return;
+            }
+
+            if (data.status === 'warning') {
+                setModalPipelineStage(2, "Tally Online: Please Open Company", 40);
+                addModalLog(`[WARNING] ${data.message}`, "WARN");
+                if (modalTbody) {
+                    modalTbody.innerHTML = `<tr><td colspan="9" class="text-center py-12 text-amber-700 font-sans">
+                        <div class="flex flex-col items-center justify-center gap-2">
+                            <span class="material-symbols-outlined text-[36px] text-amber-500">folder_open</span>
+                            <span class="font-bold text-base text-slate-800">No Company is Currently Open in Tally</span>
+                            <span class="text-xs text-slate-500 max-w-md">Port 9000 is active, but you must open your company inside Tally Prime first.</span>
+                        </div>
+                    </td></tr>`;
+                }
+                return;
+            }
 
             if (data.status === 'success') {
                 const totalCount = data.count || 0;
+                setModalPipelineStage(2, `Identified Active Company: ${data.company}`, 50);
+                addModalLog(`Identified Active Company in Tally: ${data.company}`, "INFO");
+
+                setModalPipelineStage(3, `Streaming Full Daybook (${totalCount} Vouchers)...`, 75);
+                addModalLog(`Extracted ${totalCount} authentic vouchers from Tally Daybook collection...`, "INFO");
+
                 setModalPipelineStage(4, "Executing Deduplication & Verification (0 Duplicates)...", 90);
-                addModalLog(`Downloaded ${totalCount} genuine vouchers. Applying statutory GST deductions...`, "INFO");
                 addModalLog(`Deduplication: ${data.unchanged || totalCount} verified consistent, +${data.new_inserted || 0} new. 0 DUPLICATES ENTERED.`, "SUCCESS");
 
                 setTimeout(() => {
-                    setModalPipelineStage(5, "Live Sync Complete · 100% Synchronized", 100);
+                    setModalPipelineStage(5, `Live Sync Complete · ${data.project_name} (${totalCount} Vouchers)`, 100);
                     addModalLog(`✓ Sync finished successfully for ${data.company}. Ready for GSTR-1 compilation.`, "SUCCESS");
                 }, 200);
 
@@ -846,13 +894,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 1. Update Modal Headers & Details Cards
                 const modalCompany = document.getElementById('modal-company-name');
                 if (modalCompany) {
-                    modalCompany.textContent = data.company || 'SUN BUILDERS PROJECTS LLP';
+                    modalCompany.textContent = data.company || 'SUN BUILDERS';
                     modalCompany.title = data.company || '';
                 }
 
                 const modalProject = document.getElementById('modal-project-name');
                 if (modalProject) {
-                    modalProject.textContent = `Project: ${data.project_name || 'Sun Builders'} (${data.project_code || '010011'})`;
+                    modalProject.textContent = `Project: ${data.project_name || 'Sun Builders'} (${data.project_code || ''})`;
                 }
 
                 const modalVchs = document.getElementById('modal-total-vouchers');
@@ -886,7 +934,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const connBadgeText = document.getElementById('modal-conn-text');
                 if (connBadgeText) {
-                    connBadgeText.textContent = data.connected ? 'Port 9000 Active' : 'Cloud Database Synced';
+                    connBadgeText.textContent = 'Port 9000 Active';
+                    if (connBadgeText.parentElement) {
+                        connBadgeText.parentElement.className = 'px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1';
+                    }
                 }
 
                 // 2. Render Vouchers Table in Modal
@@ -901,12 +952,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const projSelect = document.getElementById('select-voucher-project');
                 if (projSelect && data.project_code) {
+                    ensureProjectInSelect(projSelect, data.project_code, `🏢 ${data.project_name} (${data.project_code})`);
                     projSelect.value = data.project_code;
                 }
 
-                await loadRealVouchers(data.project_code || '010011');
+                await loadRealVouchers(data.project_code);
                 await checkStatus();
-
             } else {
                 setModalPipelineStage(1, `Tally Notice: ${data.message || 'Ready'}`, 50);
                 addModalLog(`Notice: ${data.message}`, "WARN");
@@ -916,7 +967,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="flex flex-col items-center justify-center gap-1.5">
                             <span class="material-symbols-outlined text-[28px] text-amber-500">warning</span>
                             <span class="font-bold">${data.message || 'Could not connect to Tally'}</span>
-                            <span class="text-xs text-slate-500">${data.suggestion || 'Please ensure Tally is open on Port 9000.'}</span>
                         </div>
                     </td></tr>`;
                 }
