@@ -20,4 +20,4 @@ ENV PORT=5050
 EXPOSE 5050
 
 # Run with Gunicorn on Railway
-CMD sh -c "gunicorn --bind 0.0.0.0:${PORT:-5050} --workers 2 --timeout 180 server:app"
+CMD sh -c "gunicorn --bind 0.0.0.0:${PORT:-5050} --workers 1 --timeout 180 server:app"
