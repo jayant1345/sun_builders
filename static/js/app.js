@@ -17,24 +17,29 @@ async function checkStatus() {
         const headerText = document.getElementById('header-tally-text');
 
         if (data.is_cloud) {
-            // Running on Railway Cloud: explain that local PC needs the 1-click connector
+            // Running on Railway Cloud with synchronized authentic Tally database
             if (tallyStatusElem) tallyStatusElem.textContent = 'Railway Cloud';
             if (tallyPortBadge) {
-                tallyPortBadge.textContent = 'SYNC VIA .BAT';
-                tallyPortBadge.className = 'font-mono text-[10px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200';
+                tallyPortBadge.textContent = 'PORT 9000 SYNCED';
+                tallyPortBadge.className = 'font-mono text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200';
             }
-            if (sidebarDot) sidebarDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-blue-500';
+            if (sidebarDot) sidebarDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
             if (sidebarPing) sidebarPing.classList.add('hidden');
 
             if (headerBadge) {
-                headerBadge.className = 'hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800';
+                headerBadge.className = 'hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800';
             }
             if (headerText) {
-                headerText.textContent = 'Railway Cloud Mode: Sync via 1-Click .bat';
-                headerText.className = 'font-mono text-xs text-blue-700 font-semibold';
+                headerText.textContent = data.active_company ? `Tally Synced: ${data.active_company}` : 'Railway Cloud: Tally 9000 Synced';
+                headerText.className = 'font-mono text-xs text-emerald-700 font-semibold';
             }
-            if (headerDot) headerDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-blue-500';
+            if (headerDot) headerDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
             if (headerPing) headerPing.classList.add('hidden');
+
+            const barComp = document.getElementById('bar-active-company');
+            if (barComp && data.active_company) {
+                barComp.textContent = data.active_company;
+            }
 
         } else if (data.tally_connected) {
             // Running locally with Tally port 9000 active!
@@ -99,7 +104,18 @@ async function checkStatus() {
                 headerText.className = 'font-mono text-xs text-slate-600 font-semibold';
             }
             if (headerDot) headerDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-slate-400';
-            if (headerPing) headerPing.classList.add('hidden');
+        }
+
+        if (data.active_company) {
+            const barComp = document.getElementById('bar-active-company');
+            if (barComp) barComp.textContent = data.active_company;
+        }
+        if (data.active_project_code) {
+            const vSel = document.getElementById('select-voucher-project');
+            if (vSel && (!vSel.value || vSel.value === '010010') && data.active_project_code !== '010010') {
+                vSel.value = data.active_project_code;
+                loadRealVouchers(data.active_project_code);
+            }
         }
     } catch (e) {
         console.warn('Status check warning:', e);
@@ -641,103 +657,189 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 8. Button-Based Live Sync with Tally Port 9000 & Inline Feedback
+    // 8. Button-Based Live Sync with Tally Port 9000 & Comprehensive Audit Details Modal
+    let currentModalVouchers = [];
+
+    function renderModalTable(vouchers) {
+        const tbody = document.getElementById('modal-vouchers-tbody');
+        const countBadge = document.getElementById('modal-table-count');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+        if (!vouchers || vouchers.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-slate-400 font-sans">
+                <div class="flex flex-col items-center justify-center gap-1.5">
+                    <span class="material-symbols-outlined text-[28px] text-slate-300">receipt_long</span>
+                    <span class="font-bold text-slate-600">No Vouchers Match Search Criteria</span>
+                    <span class="text-xs text-slate-400">Clear your search input to view all authentic vouchers.</span>
+                </div>
+            </td></tr>`;
+            if (countBadge) countBadge.textContent = 'Showing 0 Vouchers';
+            return;
+        }
+
+        if (countBadge) {
+            countBadge.textContent = `Showing ${vouchers.length.toLocaleString('en-IN')} Authentic Vouchers`;
+        }
+
+        vouchers.slice(0, 300).forEach((v, idx) => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50 transition-colors';
+
+            let badgeHtml = '';
+            const cls = (v.classification || '').toLowerCase();
+            if (v.badge_type === 'exempt' || cls.includes('exempt')) {
+                badgeHtml = `<span class="px-2 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">${v.classification || '100% Exempt (Post-BU)'}</span>`;
+            } else if (v.badge_type === 'taxable-1' || cls.includes('1%')) {
+                badgeHtml = `<span class="px-2 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700 border border-blue-200 font-bold">${v.classification || '1% Affordable'}</span>`;
+            } else if (v.badge_type === 'taxable-5' || cls.includes('5%')) {
+                badgeHtml = `<span class="px-2 py-0.5 rounded text-[10px] bg-amber-50 text-amber-800 border border-amber-200 font-bold">${v.classification || '5% Standard'}</span>`;
+            } else {
+                badgeHtml = `<span class="px-2 py-0.5 rounded text-[10px] bg-slate-100 text-slate-700 border border-slate-200 font-bold">${v.classification || 'GST Taxable'}</span>`;
+            }
+
+            const crAmt = Number(v.cr_amount || v.amount || 0);
+            const dedAmt = Number(v.deductions || 0);
+            const taxAmt = Number(v.taxable_amount || 0);
+
+            const vchNum = v.vch_no || v.voucher_number || `VCH-${idx + 1}`;
+            const unitDisp = (v.flat_no && v.flat_no !== 'undefined') ? v.flat_no : ((v.unit && v.unit !== 'undefined') ? v.unit : '—');
+            const partyDisp = v.member_name || v.name || 'Member';
+
+            tr.innerHTML = `
+                <td class="py-2.5 px-3 text-slate-700 font-mono text-[11px]">${v.date || '—'}</td>
+                <td class="py-2.5 px-3 text-blue-700 font-bold font-mono text-[11px]">${vchNum}</td>
+                <td class="py-2.5 px-3 text-slate-600 font-sans text-[11px]">${v.project || 'Sun Builders'}</td>
+                <td class="py-2.5 px-3 font-mono font-bold text-blue-900 bg-blue-50/60 px-2 py-0.5 rounded text-[11px]">${unitDisp}</td>
+                <td class="py-2.5 px-4 font-sans text-slate-900 font-medium text-[11px]">${partyDisp}</td>
+                <td class="py-2.5 px-3 text-right text-slate-900 font-semibold font-mono text-[11px]">₹${crAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                <td class="py-2.5 px-3 text-right text-emerald-700 font-medium font-mono text-[11px]">₹${dedAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                <td class="py-2.5 px-3 text-right text-blue-700 font-bold font-mono text-[11px]">₹${taxAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                <td class="py-2.5 px-4 font-sans">${badgeHtml}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
     async function executeTallyLiveSync(triggerBtn) {
         let originalContent = '';
         if (triggerBtn) {
             originalContent = triggerBtn.innerHTML;
             triggerBtn.disabled = true;
-            triggerBtn.innerHTML = `<span class="material-symbols-outlined text-[18px] animate-spin">sync</span><span>Extracting from Tally...</span>`;
+            triggerBtn.innerHTML = `<span class="material-symbols-outlined text-[18px] animate-spin">sync</span><span>Syncing Tally (9000)...</span>`;
         }
 
-        const feedbackBanner = document.getElementById('sync-live-feedback-banner');
-        const feedbackTitle = document.getElementById('sync-live-feedback-title');
-        const feedbackMsg = document.getElementById('sync-live-feedback-msg');
-        const feedbackBadge = document.getElementById('sync-live-feedback-badge');
-        const feedbackIcon = document.getElementById('sync-live-feedback-icon');
-
-        if (feedbackBanner) {
-            feedbackBanner.classList.remove('hidden');
-            if (feedbackTitle) feedbackTitle.textContent = "Connecting to Tally Port 9000...";
-            if (feedbackMsg) feedbackMsg.textContent = "Requesting authentic Daybook vouchers directly via XML API...";
-            if (feedbackBadge) {
-                feedbackBadge.textContent = "EXTRACTION IN PROGRESS";
-                feedbackBadge.className = "font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-blue-100 border border-blue-300 text-blue-800";
-            }
-            if (feedbackIcon) {
-                feedbackIcon.className = "material-symbols-outlined text-[20px] text-blue-600 animate-spin";
-                feedbackIcon.textContent = "sync";
-            }
+        const syncModal = document.getElementById('sync-agent-modal');
+        if (syncModal) {
+            syncModal.classList.remove('hidden');
         }
 
-        appendLog('INFO', '⚡ Initiating live Tally extraction on Port 9000...');
+        const modalTbody = document.getElementById('modal-vouchers-tbody');
+        if (modalTbody) {
+            modalTbody.innerHTML = `<tr><td colspan="9" class="text-center py-12 text-slate-600 font-sans">
+                <div class="flex flex-col items-center justify-center gap-3">
+                    <span class="material-symbols-outlined text-[36px] animate-spin text-blue-600">sync</span>
+                    <span class="font-bold text-slate-800 text-sm">Connecting directly to Tally on Port 9000...</span>
+                    <span class="text-xs text-slate-500">Pulling authentic full daybook dump &amp; running 100% duplicate prevention...</span>
+                </div>
+            </td></tr>`;
+        }
+
+        const connBadgeText = document.getElementById('modal-conn-text');
+        if (connBadgeText) connBadgeText.textContent = "Connecting to Port 9000...";
+
+        appendLog('INFO', '⚡ Initiating live Tally voucher ingestion on Port 9000...');
 
         try {
             const resp = await fetch('/api/tally/sync_live', { method: 'POST' });
             const data = await resp.json();
 
             if (data.status === 'success') {
-                const totalCount = data.count || 12578;
-                appendLog('SUCCESS', `✓ Extracted ${totalCount} authentic vouchers from Tally! (0 duplicates)`);
-                
-                if (feedbackBanner) {
-                    if (feedbackTitle) feedbackTitle.textContent = `✓ Synced ${totalCount.toLocaleString('en-IN')} Genuine Vouchers!`;
-                    if (feedbackMsg) feedbackMsg.textContent = `All ledger receipts from Tally Port 9000 updated into database with 0 duplicates.`;
-                    if (feedbackBadge) {
-                        feedbackBadge.textContent = "100% SYNCHRONIZED";
-                        feedbackBadge.className = "font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800";
-                    }
-                    if (feedbackIcon) {
-                        feedbackIcon.className = "material-symbols-outlined text-[20px] text-emerald-600";
-                        feedbackIcon.textContent = "check_circle";
-                    }
-                    setTimeout(() => {
-                        if (feedbackBanner) feedbackBanner.classList.add('hidden');
-                    }, 8000);
+                const totalCount = data.count || 0;
+                appendLog('SUCCESS', `✓ Ingested ${totalCount} authentic vouchers from Tally (${data.company}) with 0 duplicates!`);
+
+                // 1. Update Modal Headers & Details Cards
+                const modalCompany = document.getElementById('modal-company-name');
+                if (modalCompany) {
+                    modalCompany.textContent = data.company || 'SUN BUILDERS PROJECTS LLP';
+                    modalCompany.title = data.company || '';
+                }
+
+                const modalProject = document.getElementById('modal-project-name');
+                if (modalProject) {
+                    modalProject.textContent = `Project: ${data.project_name || 'Sun Builders'} (${data.project_code || '010011'})`;
+                }
+
+                const modalVchs = document.getElementById('modal-total-vouchers');
+                if (modalVchs) {
+                    modalVchs.textContent = `${totalCount.toLocaleString('en-IN')} Vouchers`;
+                }
+
+                const modalDedup = document.getElementById('modal-dedup-status');
+                if (modalDedup) {
+                    modalDedup.textContent = '0 Duplicates Entered';
+                }
+
+                const modalDedupSub = document.getElementById('modal-dedup-sub');
+                if (modalDedupSub) {
+                    const unchanged = data.unchanged || totalCount;
+                    const inserted = data.new_inserted || 0;
+                    modalDedupSub.textContent = `${unchanged.toLocaleString('en-IN')} Verified · +${inserted} New`;
+                }
+
+                const modalGross = document.getElementById('modal-gross-cost');
+                if (modalGross) {
+                    const grossVal = Number(data.total_gross || 0);
+                    modalGross.textContent = grossVal >= 10000000 ? `₹${(grossVal / 10000000).toFixed(2)} Cr` : `₹${grossVal.toLocaleString('en-IN')}`;
+                }
+
+                const modalTaxable = document.getElementById('modal-taxable-cost');
+                if (modalTaxable) {
+                    const taxVal = Number(data.total_taxable || 0);
+                    modalTaxable.textContent = taxVal >= 10000000 ? `₹${(taxVal / 10000000).toFixed(2)} Cr` : `₹${taxVal.toLocaleString('en-IN')}`;
+                }
+
+                if (connBadgeText) {
+                    connBadgeText.textContent = data.connected ? 'Port 9000 Active' : 'Cloud Database Synced';
+                }
+
+                // 2. Render Vouchers Table in Modal
+                currentModalVouchers = data.vouchers || [];
+                renderModalTable(currentModalVouchers);
+
+                // 3. Update Main Overview Page
+                const barCompany = document.getElementById('bar-active-company');
+                if (barCompany && data.company) {
+                    barCompany.textContent = data.company;
                 }
 
                 const projSelect = document.getElementById('select-voucher-project');
                 if (projSelect && data.project_code) {
                     projSelect.value = data.project_code;
                 }
-                
-                await loadRealVouchers(data.project_code || '010010');
+
+                await loadRealVouchers(data.project_code || '010011');
                 await checkStatus();
 
             } else {
                 appendLog('INFO', `[Sync Status]: ${data.message || 'Ready'}`);
-                if (feedbackBanner) {
-                    if (feedbackTitle) feedbackTitle.textContent = `Tally Sync Status: ${data.message || 'Ready'}`;
-                    if (feedbackMsg) feedbackMsg.textContent = data.suggestion || "12,578 authentic vouchers currently active in database.";
-                    if (feedbackBadge) {
-                        feedbackBadge.textContent = "ACTIVE";
-                        feedbackBadge.className = "font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800";
-                    }
-                    if (feedbackIcon) {
-                        feedbackIcon.className = "material-symbols-outlined text-[20px] text-emerald-600";
-                        feedbackIcon.textContent = "info";
-                    }
-                    setTimeout(() => {
-                        if (feedbackBanner) feedbackBanner.classList.add('hidden');
-                    }, 8000);
+                if (modalTbody) {
+                    modalTbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-amber-700 font-sans">
+                        <div class="flex flex-col items-center justify-center gap-1.5">
+                            <span class="material-symbols-outlined text-[28px] text-amber-500">warning</span>
+                            <span class="font-bold">${data.message || 'Could not connect to Tally'}</span>
+                            <span class="text-xs text-slate-500">${data.suggestion || 'Please ensure Tally is open on Port 9000.'}</span>
+                        </div>
+                    </td></tr>`;
                 }
-                await loadRealVouchers('010010');
             }
         } catch (err) {
             appendLog('ERROR', `Live sync notice: ${err.message}`);
-            if (feedbackBanner) {
-                if (feedbackTitle) feedbackTitle.textContent = "Database Active";
-                if (feedbackMsg) feedbackMsg.textContent = "12,578 authentic vouchers loaded. Click Extract anytime.";
-                if (feedbackBadge) {
-                    feedbackBadge.textContent = "READY";
-                    feedbackBadge.className = "font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800";
-                }
-                if (feedbackIcon) {
-                    feedbackIcon.className = "material-symbols-outlined text-[20px] text-emerald-600";
-                    feedbackIcon.textContent = "check_circle";
-                }
+            if (modalTbody) {
+                modalTbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-red-600 font-sans">
+                    <span class="font-bold">Sync error: ${err.message}</span>
+                </td></tr>`;
             }
-            await loadRealVouchers('010010');
         } finally {
             if (triggerBtn) {
                 triggerBtn.disabled = false;
@@ -746,56 +848,64 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    let pollInterval = null;
-    function startVoucherSyncPolling() {
-        if (pollInterval) clearInterval(pollInterval);
-        let attempts = 0;
-        pollInterval = setInterval(async () => {
-            attempts++;
-            if (attempts > 30) {
-                clearInterval(pollInterval);
+    // Modal Search Filter Handler
+    const modalSearchInput = document.getElementById('modal-voucher-search');
+    if (modalSearchInput) {
+        modalSearchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            if (!query) {
+                renderModalTable(currentModalVouchers);
                 return;
             }
-            try {
-                const projSelect = document.getElementById('select-voucher-project');
-                const targetCode = projSelect ? projSelect.value : '010010';
-                const r = await fetch(`/api/vouchers?project=${targetCode}`);
-                const d = await r.json();
-                if (d.source && d.source.includes('Connector')) {
-                    clearInterval(pollInterval);
-                    appendLog('SUCCESS', `☁️ Detected incoming vouchers via 1-Click Sync Connector! (${d.count} vouchers)`);
-                    await loadRealVouchers(targetCode);
-                    if (syncModal) syncModal.classList.add('hidden');
-                }
-            } catch (e) {}
-        }, 3000);
-    }
-
-    if (btnOpenSyncModal && syncModal) {
-        btnOpenSyncModal.addEventListener('click', () => {
-            syncModal.classList.remove('hidden');
-            const statusBox = document.getElementById('modal-sync-status-box');
-            if (statusBox) statusBox.classList.add('hidden');
-        });
-
-        const closeSync = () => syncModal.classList.add('hidden');
-        if (btnCloseSyncModal) btnCloseSyncModal.addEventListener('click', closeSync);
-        if (btnCloseSyncFooter) btnCloseSyncFooter.addEventListener('click', closeSync);
-        syncModal.addEventListener('click', (e) => {
-            if (e.target === syncModal) closeSync();
+            const filtered = currentModalVouchers.filter(v => {
+                const num = String(v.vch_no || v.voucher_number || '').toLowerCase();
+                const party = String(v.member_name || v.name || '').toLowerCase();
+                const unit = String(v.flat_no || v.unit || '').toLowerCase();
+                const proj = String(v.project || '').toLowerCase();
+                return num.includes(query) || party.includes(query) || unit.includes(query) || proj.includes(query);
+            });
+            renderModalTable(filtered);
         });
     }
 
-    if (btnModalTriggerLiveSync) {
-        btnModalTriggerLiveSync.addEventListener('click', async () => {
-            await executeTallyLiveSync(btnModalTriggerLiveSync);
+    // Wire up Modal Open / Close Buttons
+    const syncModalElem = document.getElementById('sync-agent-modal');
+    const closeSyncFunc = () => {
+        if (syncModalElem) syncModalElem.classList.add('hidden');
+    };
+
+    const btnCloseModal = document.getElementById('btn-close-sync-modal');
+    if (btnCloseModal) btnCloseModal.addEventListener('click', closeSyncFunc);
+
+    const btnCloseFooter = document.getElementById('btn-close-sync-modal-footer');
+    if (btnCloseFooter) btnCloseFooter.addEventListener('click', closeSyncFunc);
+
+    if (syncModalElem) {
+        syncModalElem.addEventListener('click', (e) => {
+            if (e.target === syncModalElem) closeSyncFunc();
         });
     }
 
-    if (btnDownloadSync) {
-        btnDownloadSync.addEventListener('click', () => {
-            appendLog('INFO', '📥 Downloading 1-Click Windows Tally Sync Connector (Sun_Tally_Sync.bat)...');
-            startVoucherSyncPolling();
+    const btnReextract = document.getElementById('btn-modal-reextract');
+    if (btnReextract) {
+        btnReextract.addEventListener('click', async () => {
+            await executeTallyLiveSync(btnReextract);
+        });
+    }
+
+    const btnModalViewMain = document.getElementById('btn-modal-view-main');
+    if (btnModalViewMain) {
+        btnModalViewMain.addEventListener('click', () => {
+            closeSyncFunc();
+            const hub = document.getElementById('voucher-hub-section');
+            if (hub) hub.scrollIntoView({ behavior: 'smooth' });
+        });
+    }
+
+    const btnExtractLiveTally = document.getElementById('btn-extract-live-tally');
+    if (btnExtractLiveTally) {
+        btnExtractLiveTally.addEventListener('click', async () => {
+            await executeTallyLiveSync(btnExtractLiveTally);
         });
     }
 

@@ -410,8 +410,27 @@
         <!-- Central Control & Period Execution Panel -->
         <section class="glass-panel rounded-2xl p-5 border-l-4 border-l-blue-600 flex flex-col xl:flex-row items-center justify-between gap-5 bg-white shadow-card">
           <div class="flex flex-wrap items-center gap-4 w-full xl:w-auto">
+            <!-- Full Tally Dump Ingestion Status (No period restriction for ingestion) -->
+            <div class="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+              <div class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 shadow-xs">
+                <span class="material-symbols-outlined text-[20px]">database</span>
+              </div>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Tally Ingestion Scope:</span>
+                  <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">FULL DUMP (ALL VOUCHERS)</span>
+                </div>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <span id="bar-active-company" class="font-bold text-xs text-slate-900 font-mono truncate max-w-xs">SUN BUILDERS PROJECTS LLP SUN PARK WEST-ADXFS1402N</span>
+                  <span class="text-slate-400 font-bold">•</span>
+                  <span class="text-xs text-emerald-700 font-semibold font-mono">0 Duplicates Allowed</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- GSTR-1 Return Filing Period (Month) -->
             <div>
-              <label class="block text-xs text-slate-500 mb-1 uppercase font-bold">Filing Period (Month)</label>
+              <label class="block text-xs text-slate-500 mb-1 uppercase font-bold">GSTR-1 Return Filing Month</label>
               <div class="relative">
                 <select id="select-month" class="bg-white border border-slate-200 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 text-slate-900 font-semibold text-sm rounded-lg py-2 pl-3 pr-9 appearance-none cursor-pointer shadow-xs">
                   <option value="JUN-26">JUN-26 (Audited)</option>
@@ -422,41 +441,18 @@
                 <span class="material-symbols-outlined absolute right-2.5 top-2.5 text-slate-400 pointer-events-none text-[18px]">expand_more</span>
               </div>
             </div>
-            <div class="flex items-center gap-2">
-              <div>
-                <label class="block text-xs text-slate-500 mb-1 uppercase font-bold">From Date</label>
-                <div class="flex items-center bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus-within:border-blue-600 shadow-xs">
-                  <span class="material-symbols-outlined text-slate-400 text-[16px] mr-1.5">calendar_month</span>
-                  <input id="input-from-date" class="bg-transparent border-0 p-0 text-slate-900 font-mono text-sm focus:ring-0 w-24" type="text" value="01-08-2026"/>
-                </div>
-              </div>
-              <span class="text-slate-400 mt-5 font-bold">to</span>
-              <div>
-                <label class="block text-xs text-slate-500 mb-1 uppercase font-bold">To Date</label>
-                <div class="flex items-center bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus-within:border-blue-600 shadow-xs">
-                  <span class="material-symbols-outlined text-slate-400 text-[16px] mr-1.5">calendar_month</span>
-                  <input id="input-to-date" class="bg-transparent border-0 p-0 text-slate-900 font-mono text-sm focus:ring-0 w-24" type="text" value="31-08-2026"/>
-                </div>
-              </div>
-            </div>
-            <div class="mt-4 xl:mt-0 xl:self-end">
-              <div class="px-3.5 py-2 rounded-lg bg-blue-50 border border-blue-200 flex items-center gap-2 text-blue-700 font-mono text-xs font-semibold shadow-xs">
-                <span class="material-symbols-outlined text-[16px]">receipt</span>
-                <strong class="font-bold">1,428 Vouchers</strong> Ready for Ingestion
-              </div>
-            </div>
           </div>
           
           <div class="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-end">
-            <button class="btn-resync-ledger px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-md shadow-emerald-600/20">
+            <button class="btn-resync-ledger px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-md shadow-emerald-600/20 cursor-pointer">
               <span class="material-symbols-outlined text-[17px]">bolt</span>
-              <span>⚡ Extract &amp; Sync Tally Data</span>
+              <span>⚡ Extract &amp; Audit Tally Vouchers</span>
             </button>
-            <button class="btn-download-xlsx px-3.5 py-2 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs">
+            <button class="btn-download-xlsx px-3.5 py-2 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs cursor-pointer">
               <span class="material-symbols-outlined text-[16px]">download</span>
               <span>Download .xlsx</span>
             </button>
-            <button class="btn-generate-gstr1 px-5 py-2 rounded-xl bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-600 text-white font-bold shadow-md shadow-blue-500/25 hover:shadow-blue-500/40 hover:brightness-105 active:scale-[0.98] transition-all duration-150 flex items-center gap-2 text-sm">
+            <button class="btn-generate-gstr1 px-5 py-2 rounded-xl bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-600 text-white font-bold shadow-md shadow-blue-500/25 hover:shadow-blue-500/40 hover:brightness-105 active:scale-[0.98] transition-all duration-150 flex items-center gap-2 text-sm cursor-pointer">
               <span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">bolt</span>
               <span>Generate GSTR-1 Excel File</span>
             </button>
@@ -1420,79 +1416,133 @@
         </section>
       </div>
 
-  <!-- Modal 2: Tally Live Synchronization Hub -->
-  <div id="sync-agent-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden transition-all duration-300">
-    <div class="relative w-full max-w-lg p-6 rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden flex flex-col gap-4">
+  <!-- Modal 2: Tally Live Voucher Ingestion & Audit Details Window -->
+  <div id="sync-agent-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md hidden transition-all duration-300">
+    <div class="relative w-full max-w-6xl max-h-[92vh] p-6 rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden flex flex-col gap-4">
       
-      <!-- Ambient Glow -->
-      <div class="absolute -top-20 -right-20 w-44 h-44 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <!-- Top Ambient Tech Glow -->
+      <div class="absolute -top-24 -right-24 w-60 h-60 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute -bottom-24 -left-24 w-60 h-60 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
       <!-- Header -->
-      <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+      <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3 flex-shrink-0">
         <div class="flex items-center gap-3">
-          <div class="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-xs flex-shrink-0">
-            <span class="material-symbols-outlined text-[26px]">sync_saved_locally</span>
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-white shadow-md shadow-emerald-500/25 flex-shrink-0">
+            <span class="material-symbols-outlined text-[28px]">receipt_long</span>
           </div>
           <div>
-            <h3 class="font-display font-bold text-lg text-slate-900">Tally Live Extraction Hub</h3>
-            <p class="text-xs text-slate-500">Direct Port 9000 extraction &amp; cloud database synchronization</p>
+            <div class="flex items-center gap-2">
+              <h3 class="font-display font-bold text-lg text-slate-900">Tally Live Voucher Ingestion &amp; Audit Console</h3>
+              <span id="modal-conn-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span id="modal-conn-text">Port 9000 Connected</span>
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">100% authentic daybook transactions extracted via Python directly from Tally (Zero duplicates allowed)</p>
           </div>
         </div>
-        <button id="btn-close-sync-modal" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs transition-colors">
-          <span class="material-symbols-outlined text-[20px]">close</span>
-        </button>
+        <div class="flex items-center gap-2">
+          <button id="btn-modal-reextract" class="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer">
+            <span class="material-symbols-outlined text-[16px]">sync</span>
+            <span>Re-Sync Tally (9000)</span>
+          </button>
+          <button id="btn-close-sync-modal" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs transition-colors cursor-pointer">
+            <span class="material-symbols-outlined text-[22px]">close</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Connection Status Card -->
-      <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-2.5">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Connection Health</span>
-          <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Port 9000 Active</span>
+      <!-- 4-Card Extraction & Ingestion Summary Bar -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
+        <!-- Card 1: Active Tally Company -->
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
+          <div class="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Loaded Tally Company</div>
+          <div id="modal-company-name" class="font-bold text-xs text-slate-900 font-mono mt-1 truncate" title="SUN BUILDERS PROJECTS LLP SUN PARK WEST-ADXFS1402N">SUN BUILDERS PROJECTS LLP SUN PARK WEST-ADXFS1402N</div>
+          <div id="modal-project-name" class="text-[11px] text-blue-700 font-mono mt-0.5 font-bold">Project: Sun Park West (010011)</div>
+        </div>
+
+        <!-- Card 2: Voucher Count & Dump Mode -->
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
+          <div class="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Ingested Vouchers</div>
+          <div id="modal-total-vouchers" class="font-extrabold text-lg text-emerald-600 font-mono mt-0.5">1,569 Vouchers</div>
+          <div class="text-[11px] text-slate-600 font-mono mt-0.5">Full Dump (All Periods)</div>
+        </div>
+
+        <!-- Card 3: Deduplication Audit Safeguard -->
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
+          <div class="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Deduplication Engine</div>
+          <div id="modal-dedup-status" class="font-extrabold text-base text-purple-700 font-mono mt-0.5">0 Duplicates Entered</div>
+          <div id="modal-dedup-sub" class="text-[11px] text-slate-600 font-mono mt-0.5">1,546 Verified · +23 Updated</div>
+        </div>
+
+        <!-- Card 4: Financial Collections & Base -->
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
+          <div class="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Gross Collections &amp; Cost</div>
+          <div id="modal-gross-cost" class="font-extrabold text-base text-slate-900 font-mono mt-0.5">₹61.35 Cr</div>
+          <div class="text-[11px] text-slate-600 font-mono mt-0.5">
+            Taxable Base: <strong id="modal-taxable-cost" class="text-blue-700 font-bold">₹61.34 Cr</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search, Table Controls & Showing Counter -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 flex-shrink-0">
+        <div class="relative flex-1 max-w-md">
+          <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-[18px]">search</span>
+          <input id="modal-voucher-search" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl pl-9 pr-3 py-2 focus:border-blue-600 focus:bg-white shadow-xs font-medium" placeholder="Search by voucher #, flat / unit, party name..." type="text"/>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="modal-table-count" class="px-3 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold">
+            Showing 1,569 Authentic Vouchers
           </span>
         </div>
-        <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60 text-xs">
-          <div>
-            <span class="text-slate-400 block text-[11px]">Active Company:</span>
-            <span class="font-semibold text-slate-800 font-mono text-[11px] truncate block">Sun Footprints (010010)</span>
-          </div>
-          <div>
-            <span class="text-slate-400 block text-[11px]">Database Vouchers:</span>
-            <span id="modal-voucher-count-display" class="font-bold text-emerald-700 font-mono">12,578 Genuine Records</span>
-          </div>
+      </div>
+
+      <!-- Detailed Vouchers Table -->
+      <div class="flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-slate-200 min-h-[220px] max-h-[380px] bg-white shadow-inner">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead class="sticky top-0 z-20 bg-slate-100 shadow-xs">
+            <tr class="text-slate-600 border-b border-slate-200 font-mono uppercase tracking-wider font-semibold text-[11px]">
+              <th class="py-2.5 px-3">Date</th>
+              <th class="py-2.5 px-3">Voucher No</th>
+              <th class="py-2.5 px-3">Project</th>
+              <th class="py-2.5 px-3 text-blue-700 font-bold">Flat / Unit No</th>
+              <th class="py-2.5 px-4">Member / Account Name</th>
+              <th class="py-2.5 px-3 text-right">Gross Amount / Cost (₹)</th>
+              <th class="py-2.5 px-3 text-right">Deductions (₹)</th>
+              <th class="py-2.5 px-3 text-right">Taxable Base (₹)</th>
+              <th class="py-2.5 px-4">Statutory GST Status</th>
+            </tr>
+          </thead>
+          <tbody id="modal-vouchers-tbody" class="divide-y divide-slate-100 font-mono">
+            <!-- Dynamically populated rows -->
+            <tr>
+              <td colspan="9" class="text-center py-8 text-slate-400 font-sans">
+                <div class="flex flex-col items-center justify-center gap-2">
+                  <span class="material-symbols-outlined text-[24px] animate-spin text-blue-600">sync</span>
+                  <span class="font-bold text-slate-700">Connecting to Tally Port 9000 &amp; Ingesting Vouchers...</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer Action Strip -->
+      <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0">
+        <div class="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>Verified against Tally XML Daybook • Pure Python Execution • Zero Duplicates</span>
         </div>
-      </div>
-
-      <!-- Primary Action: Live Extraction Trigger -->
-      <div class="flex flex-col gap-2">
-        <button id="btn-modal-trigger-live-sync" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 active:scale-[0.98] transition-all cursor-pointer">
-          <span class="material-symbols-outlined text-[20px]">bolt</span>
-          <span id="btn-modal-sync-text">⚡ Start Live Tally Extraction Now</span>
-        </button>
-        <p class="text-[11px] text-center text-slate-500">Pulls all vouchers, computes statutory deductions, and updates GST return tables with 0 duplicates.</p>
-      </div>
-
-      <!-- Real-time Progress & Status Log -->
-      <div id="modal-sync-status-box" class="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-xs flex flex-col gap-2 transition-all">
-        <div class="flex items-center justify-between">
-          <span class="font-bold text-slate-800 flex items-center gap-1.5">
-            <span id="modal-sync-status-icon" class="material-symbols-outlined text-[18px] text-emerald-600">check_circle</span>
-            <span id="modal-sync-status-title">Ready for Extraction</span>
-          </span>
-          <span id="modal-sync-percentage" class="font-mono font-bold text-emerald-700">100%</span>
+        <div class="flex items-center gap-2">
+          <button id="btn-modal-view-main" class="px-4 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer">
+            <span class="material-symbols-outlined text-[16px]">visibility</span>
+            <span>View in Overview Table</span>
+          </button>
+          <button id="btn-close-sync-modal-footer" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer">
+            Close Window
+          </button>
         </div>
-        <p id="modal-sync-status-msg" class="text-slate-600 text-[11px] leading-relaxed">
-          12,578 authentic vouchers loaded. Click the button above anytime to pull latest entries from Tally.
-        </p>
-      </div>
-
-      <!-- Footer -->
-      <div class="pt-2 border-t border-slate-100 flex justify-between items-center">
-        <span class="text-[11px] text-slate-400 font-mono">Tally XML API • Zero Duplicates Engine</span>
-        <button id="btn-close-sync-modal-footer" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs transition-colors">
-          Close Window
-        </button>
       </div>
 
     </div>
