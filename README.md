@@ -104,46 +104,13 @@ Then navigate to: **[http://localhost:5050](http://localhost:5050)**
 
 ---
 
-## 6. Procedure to Extract Another Project / Company Backup (.zip / .rar)
+## 6. Live Tally Voucher Extraction via Python (Port 9000)
 
-When the CA office receives another `.zip` or `.rar` backup file for another company or project of Sun Builders, you can use any of the methods below:
-
-### Method 1: Ingest via Web Dashboard (Recommended & Aesthetic)
-1. Open the dashboard at **[http://localhost:5050](http://localhost:5050)**.
-2. Click the **"Ingest Backup (.zip / .rar)"** button in the top navigation bar, or open the **Voucher Ingestion** tab.
-3. **Drag & drop** your `.zip` or `.rar` file into the glowing dropzone (or enter the path).
-4. Click **Start Automated Extraction & Database Mount**.
-5. Watch the real-time glowing progress bar and multi-step checklist (*Unpacking archive &rarr; Scanning database &rarr; Mounting to data/ &rarr; Linking Tally Port 9000*).
-6. Once complete, click **View Vouchers & Prepare GSTR-1** to start preparing returns!
-
-### Method 2: Automated CLI Script
-Run `extract_backup.py` with the path to the received file:
-```bash
-# For a .zip file
-python extract_backup.py "C:\path\to\another_project.zip"
-
-# For a .rar file
-python extract_backup.py "C:\path\to\010011.rar"
-```
-
-### Method 3: Manual Drag & Drop Extraction
-1. Right-click the `.zip` or `.rar` file $\rightarrow$ **Extract All** (or extract using WinRAR / 7-Zip).
-2. Look inside the extracted folder for the **5-digit or 6-digit numeric folder** (e.g., `010011` or `10002`). This folder contains files like `Company.1800`, `TranMgr.1800`, and `Manager.1800`.
-3. Copy or move that numeric folder into:
-   ```text
-   c:\Project_AI\sun_builders\data\<company_folder>\
+All voucher ingestion is performed **100% directly via Python** connecting to Tally on **Port 9000**:
+1. Open Tally on your computer and select the Sun Builders company (e.g. `010010` - Sun Footprint or `010011` - Sun Park West).
+2. Ensure Tally ODBC / XML server is enabled on Port 9000.
+3. In the Web UI ([http://localhost:5050](http://localhost:5050)), click **⚡ Extract & Sync Live Tally (Port 9000)** or run:
+   ```bash
+   python tally_sync_agent.py
    ```
-   *Example:* `c:\Project_AI\sun_builders\data\010011\`
-
-### Method 4: REST API Endpoint
-```bash
-curl -X POST http://localhost:5050/api/upload_backup -H "Content-Type: application/json" -d "{\"path\": \"C:\\path\\to\\another_project.zip\"}"
-```
-
-### Loading the New Company in Tally:
-1. In Tally, press **Alt + F3** $\rightarrow$ **Select Company**.
-2. Set path to: `c:\Project_AI\sun_builders\data`.
-3. The new company will immediately appear in the company list with its official name and company number.
-4. Select and press Enter to open it. Tally will serve its vouchers through Port 9000 to the web application automatically.
-
-
+4. The Python engine communicates directly with Tally via XML, parses vouchers into authentic transactions, classifies GST liability according to statutory rules, and updates the database live.

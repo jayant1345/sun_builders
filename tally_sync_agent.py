@@ -202,34 +202,54 @@ def extract_from_live_tally(tally_url="http://localhost:9000"):
     parsed_vouchers.sort(key=date_sort_key, reverse=True)
     return active_company, parsed_vouchers
 
+def resolve_company_code(company_name: str):
+    c_upper = (company_name or "").upper()
+    if "PARK WEST" in c_upper or "010011" in c_upper:
+        return "010011", "Sun Park West"
+    if "ATMOSPHERE" in c_upper or "010000" in c_upper or "010012" in c_upper:
+        return "010000", "Sun Atmosphere"
+    if "SILVER SPRING" in c_upper or "010002" in c_upper:
+        return "010002", "Sun Silver Spring"
+    if "GRAVITAS" in c_upper or "010009" in c_upper:
+        return "010009", "Sun Gravitas"
+    if "LEKHAMBHA" in c_upper or "010015" in c_upper:
+        return "010015", "Lekhambha"
+    return "010010", "Sun Footprint"
+
 def sync(destination_url=DEFAULT_RAILWAY_URL):
     company_name, vouchers = extract_from_live_tally()
+    target_code, display_name = resolve_company_code(company_name)
 
     if not vouchers:
         # Fallback to existing saved json if live tally wasn't open
-        cached_file = os.path.join(DATA_DIR, "synced_sun_footprint.json")
+        cached_file = os.path.join(DATA_DIR, f"synced_{display_name.replace(' ', '_').lower()}.json")
+        if not os.path.exists(cached_file):
+            cached_file = os.path.join(DATA_DIR, "synced_sun_footprint.json")
         if os.path.exists(cached_file):
             print(f"[*] Live Tally not running; loading cached authentic dataset: {cached_file}")
             with open(cached_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 vouchers = data.get("vouchers", [])
-                company_name = data.get("project", "Sun Footprint")
+                company_name = data.get("project", display_name)
 
     if not vouchers:
         print("[X] No vouchers could be extracted. Please make sure Tally is open with your company.")
         return False
 
     print(f"\n[+] Total Authentic Vouchers Ready for Sync: {len(vouchers):,}")
+    print(f"    - Loaded Company:   {company_name}")
+    print(f"    - Target Project:   {display_name} ({target_code})")
     total_gross = sum(v.get("cr_amount", 0) for v in vouchers)
     total_taxable = sum(v.get("taxable_amount", 0) for v in vouchers)
     print(f"    - Gross Collections: Rs. {total_gross:,.2f}")
     print(f"    - Net Taxable Base:  Rs. {total_taxable:,.2f}")
 
     # 1. Save Locally
-    local_file = os.path.join(DATA_DIR, "synced_sun_footprint.json")
+    local_file = os.path.join(DATA_DIR, f"synced_{display_name.replace(' ', '_').lower()}.json")
     with open(local_file, "w", encoding="utf-8") as f:
         json.dump({
-            "project": company_name or "Sun Footprint",
+            "project": display_name,
+            "company_code": target_code,
             "synced_at": datetime.now().isoformat(),
             "source": f"Live Tally - {company_name}",
             "count": len(vouchers),
@@ -238,16 +258,17 @@ def sync(destination_url=DEFAULT_RAILWAY_URL):
 
     try:
         from core.db import db
-        db.save_vouchers("010010", vouchers)
-    except Exception:
-        pass
+        db.save_vouchers(target_code, vouchers)
+    except Exception as dbe:
+        print("[DB Notice]:", dbe)
 
     # 2. Transmit to Railway Cloud
     target_endpoint = f"{destination_url.rstrip('/')}/api/vouchers/sync"
     print(f"\n[*] Transmitting payload to Railway Cloud: {target_endpoint}...")
 
     payload = {
-        "project": company_name or "Sun Footprint",
+        "project": display_name,
+        "company_code": target_code,
         "synced_at": datetime.now().isoformat(),
         "source": "1-Click Tally Sync Agent",
         "count": len(vouchers),

@@ -260,15 +260,9 @@
           <span>Last Synced: Just now</span>
         </div>
         <div class="flex items-center border-l border-outline-variant pl-3 gap-2">
-          <button class="btn-open-extractor inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container border border-primary/40 text-primary hover:bg-surface-container-high hover:border-primary text-xs font-semibold shadow-sm transition-all duration-150">
-            <span class="material-symbols-outlined text-[16px]">cloud_upload</span>
-            <span>Ingest Backup (.zip / .rar)</span>
-          </button>
-          <button class="btn-resync-ledger p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" title="Sync Ledger">
-            <span class="material-symbols-outlined text-[18px]">sync</span>
-          </button>
-          <button class="btn-launch-tally p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" title="Launch Tally Setup">
-            <span class="material-symbols-outlined text-[18px]">settings_ethernet</span>
+          <button class="btn-resync-ledger inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold shadow-xs transition-all duration-150" title="Extract & Sync Live Tally (Port 9000)">
+            <span class="material-symbols-outlined text-[16px]">bolt</span>
+            <span>Sync Tally (9000)</span>
           </button>
         </div>
 
@@ -454,17 +448,9 @@
           </div>
           
           <div class="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-end">
-            <button class="btn-open-extractor px-3.5 py-2 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs">
-              <span class="material-symbols-outlined text-[16px]">folder_zip</span>
-              <span>Ingest Backup Archive</span>
-            </button>
             <button class="btn-resync-ledger px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-md shadow-emerald-600/20">
               <span class="material-symbols-outlined text-[17px]">bolt</span>
               <span>⚡ Extract &amp; Sync Tally Data</span>
-            </button>
-            <button class="btn-launch-tally px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs">
-              <span class="material-symbols-outlined text-[16px]">settings_ethernet</span>
-              <span>Launch Tally Config</span>
             </button>
             <button class="btn-download-xlsx px-3.5 py-2 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs">
               <span class="material-symbols-outlined text-[16px]">download</span>
@@ -502,10 +488,6 @@
               <button id="btn-extract-live-tally" class="btn-resync-ledger px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] cursor-pointer">
                 <span class="material-symbols-outlined text-[18px]">bolt</span>
                 <span id="btn-sync-label-main">⚡ Extract &amp; Sync Live Tally (Port 9000)</span>
-              </button>
-              <button class="btn-open-extractor px-3.5 py-2 rounded-xl bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs">
-                <span class="material-symbols-outlined text-[16px]">folder_zip</span>
-                <span>Ingest Archive</span>
               </button>
               <button class="btn-generate-gstr1 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-700 to-indigo-600 text-white font-bold text-xs flex items-center gap-1.5 hover:brightness-105 shadow-md shadow-blue-500/20">
                 <span class="material-symbols-outlined text-[16px]">bolt</span>
@@ -1429,181 +1411,14 @@
                   <div class="text-[11px] text-on-surface-variant font-sans mt-0.5">Downloads the generated Excel file.</div>
                 </div>
                 <div class="p-2 rounded bg-surface-container-lowest border border-outline-variant">
-                  <span class="text-tertiary font-bold">POST</span> /api/tally/setup
-                  <div class="text-[11px] text-on-surface-variant font-sans mt-0.5">Launches Tally or the official installer.</div>
+                  <span class="text-emerald-700 font-bold">POST</span> /api/tally/sync_live
+                  <div class="text-[11px] text-on-surface-variant font-sans mt-0.5">1-Click live extraction directly from Tally (Port 9000) via Python XML engine.</div>
                 </div>
               </div>
             </div>
           </div>
         </section>
       </div>
-
-  <!-- ========================================================================= -->
-  <!-- AESTHETIC TALLY BACKUP INGESTION MODAL & PROGRESS STUDIO                  -->
-  <!-- ========================================================================= -->
-  <div id="extractor-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden transition-all duration-300">
-    <div class="relative w-full max-w-xl p-6 rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden flex flex-col gap-5">
-      
-      <!-- Ambient Modal Glows -->
-      <div class="absolute -top-20 -right-20 w-44 h-44 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-      <div class="absolute -bottom-20 -left-20 w-44 h-44 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-      <!-- Modal Header -->
-      <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs flex-shrink-0">
-            <span class="material-symbols-outlined text-[24px]">folder_zip</span>
-          </div>
-          <div>
-            <h3 class="font-display font-bold text-lg text-slate-900">Tally Project Data Ingestion Studio</h3>
-            <p class="text-xs text-slate-500">Extract and mount any Sun Builders backup (.zip, .rar, or folder) automatically into Tally</p>
-          </div>
-        </div>
-        <button id="btn-close-extractor-modal" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs transition-colors">
-          <span class="material-symbols-outlined text-[20px]">close</span>
-        </button>
-      </div>
-
-      <!-- State 1: Upload / Input Form (Visible before extraction starts) -->
-      <div id="extractor-form-view" class="flex flex-col gap-4">
-        <!-- Interactive Drag & Drop Area -->
-        <div id="dropzone-area" class="border-2 border-dashed border-blue-200 hover:border-blue-500 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-blue-50/40 hover:bg-blue-50/70 transition-all text-center group">
-          <input type="file" id="file-input-backup" class="hidden" accept=".zip,.rar,.7z,.xlsx,.xls,.json,.xml"/>
-          <div class="w-12 h-12 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
-            <span class="material-symbols-outlined text-[26px]">cloud_upload</span>
-          </div>
-          <div>
-            <span class="text-sm font-semibold text-slate-800">Click to Browse or Drag &amp; Drop Backup File</span>
-            <p class="text-xs text-slate-500 mt-0.5">Supports Sun Builders data &amp; backups: <code class="text-blue-700 font-mono font-semibold">.ZIP</code>, <code class="text-blue-700 font-mono font-semibold">.RAR</code>, <code class="text-blue-700 font-mono font-semibold">.7Z</code>, <code class="text-blue-700 font-mono font-semibold">.XLSX</code></p>
-          </div>
-          <span id="selected-file-name" class="hidden text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-300 mt-1"></span>
-        </div>
-
-        <!-- OR Divider -->
-        <div class="flex items-center gap-3 text-xs text-slate-300 font-mono">
-          <div class="flex-1 h-px bg-slate-200"></div>
-          <span class="text-slate-400 font-semibold text-[11px]">OR ENTER FILE PATH ON PC</span>
-          <div class="flex-1 h-px bg-slate-200"></div>
-        </div>
-
-        <!-- Direct Path Input -->
-        <div class="flex flex-col gap-1.5">
-          <div class="flex items-center justify-between">
-            <label class="text-xs text-slate-700 font-medium">Local Path to Backup Archive:</label>
-            <button type="button" id="btn-quick-fill-existing" class="text-[11px] font-mono text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 font-semibold">
-              <span class="material-symbols-outlined text-[13px]">bolt</span>
-              <span>Use existing: 010010.rar</span>
-            </button>
-          </div>
-          <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus-within:border-blue-500 focus-within:bg-white transition-colors">
-            <span class="material-symbols-outlined text-slate-400 text-[18px]">folder_open</span>
-            <input id="input-backup-path" type="text" value="C:\naman_ca\Sun_Builders\010010.rar" placeholder="e.g. C:\naman_ca\Sun_Builders\010010.rar" class="bg-transparent border-0 p-0 text-xs text-slate-800 font-mono focus:ring-0 w-full placeholder:text-slate-400"/>
-          </div>
-        </div>
-
-        <!-- Optional Railway Cloud Destination URL -->
-        <div class="flex flex-col gap-1.5">
-          <div class="flex items-center justify-between">
-            <label class="text-xs text-slate-700 font-medium flex items-center gap-1.5">
-              <span class="material-symbols-outlined text-[15px] text-emerald-600">cloud_upload</span>
-              <span>Railway Cloud Destination URL (Optional):</span>
-            </label>
-            <span class="text-[10px] text-emerald-700 font-mono font-medium">Bypasses manual terminal sync</span>
-          </div>
-          <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus-within:border-emerald-500 focus-within:bg-white transition-colors">
-            <span class="material-symbols-outlined text-slate-400 text-[18px]">public</span>
-            <input id="input-railway-target-url" type="text" placeholder="e.g. https://sun-builders.up.railway.app (Leave empty for local only)" class="bg-transparent border-0 p-0 text-xs text-slate-800 font-mono focus:ring-0 w-full placeholder:text-slate-400"/>
-          </div>
-        </div>
-
-        <!-- Action Button -->
-        <button id="btn-start-extract" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-700 to-indigo-600 hover:from-blue-800 hover:to-indigo-700 text-white font-bold text-sm shadow-md shadow-blue-500/25 active:scale-[0.99] transition-all flex items-center justify-center gap-2">
-          <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
-          <span>Start Automated Ingestion &amp; Cloud Sync</span>
-        </button>
-      </div>
-
-      <!-- State 2: Live Aesthetic Progress & Tally Background Loader -->
-      <div id="extractor-progress-view" class="hidden flex flex-col gap-5 py-2">
-        
-        <!-- Animated Glowing Tech Spinner & Status -->
-        <div class="flex items-center gap-4 p-4 rounded-xl bg-surface-container border border-outline-variant">
-          <div class="relative w-12 h-12 flex items-center justify-center flex-shrink-0">
-            <!-- Pulsing Rings -->
-            <div id="spinner-pulse" class="absolute inset-0 rounded-full border-2 border-primary/40 animate-ping"></div>
-            <div id="spinner-circle" class="w-10 h-10 rounded-full border-2 border-t-primary border-r-transparent border-b-secondary border-l-transparent animate-spin"></div>
-            <span id="spinner-icon" class="material-symbols-outlined text-primary text-[20px] absolute">sync</span>
-          </div>
-          <div class="flex-1">
-            <div class="flex items-center justify-between">
-              <span id="progress-phase-title" class="font-display font-bold text-sm text-on-surface">Extracting &amp; Mounting Tally Data...</span>
-              <span id="progress-percentage" class="font-mono text-xs font-bold text-secondary">0%</span>
-            </div>
-            <p id="progress-phase-desc" class="text-xs text-on-surface-variant mt-0.5 font-mono">Initiating decompression thread...</p>
-          </div>
-        </div>
-
-        <!-- Animated Progress Bar with Glow -->
-        <div class="w-full h-2.5 rounded-full bg-surface-container-lowest overflow-hidden border border-outline-variant p-[1px]">
-          <div id="progress-bar-fill" class="h-full rounded-full bg-gradient-to-r from-blue-600 via-primary to-secondary transition-all duration-300 w-0 shadow-sm shadow-secondary/50"></div>
-        </div>
-
-        <!-- Step-by-Step Live Audit Checklist -->
-        <div class="space-y-2 text-xs font-mono">
-          <div id="step-1" class="flex items-center gap-2.5 text-on-surface-variant p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
-            <span class="material-symbols-outlined text-[16px] text-outline step-icon">radio_button_unchecked</span>
-            <span class="flex-1">1. Unpack compressed archive streams (.zip/.rar)</span>
-            <span class="text-[10px] step-status text-outline">WAITING</span>
-          </div>
-          <div id="step-2" class="flex items-center gap-2.5 text-on-surface-variant p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
-            <span class="material-symbols-outlined text-[16px] text-outline step-icon">radio_button_unchecked</span>
-            <span class="flex-1">2. Scan numeric Tally company folder (TranMgr.1800, Company)</span>
-            <span class="text-[10px] step-status text-outline">WAITING</span>
-          </div>
-          <div id="step-3" class="flex items-center gap-2.5 text-on-surface-variant p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
-            <span class="material-symbols-outlined text-[16px] text-outline step-icon">radio_button_unchecked</span>
-            <span class="flex-1">3. Mount company files into project data directory</span>
-            <span class="text-[10px] step-status text-outline">WAITING</span>
-          </div>
-          <div id="step-4" class="flex items-center gap-2.5 text-on-surface-variant p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
-            <span class="material-symbols-outlined text-[16px] text-outline step-icon">radio_button_unchecked</span>
-            <span class="flex-1">4. Link background Tally XML / ODBC server (Port 9000)</span>
-            <span class="text-[10px] step-status text-outline">WAITING</span>
-          </div>
-          <div id="step-5" class="flex items-center gap-2.5 text-on-surface-variant p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
-            <span class="material-symbols-outlined text-[16px] text-outline step-icon">radio_button_unchecked</span>
-            <span class="flex-1">5. Transmit &amp; Sync Vouchers to Railway Cloud</span>
-            <span class="text-[10px] step-status text-outline">WAITING</span>
-          </div>
-        </div>
-
-        <!-- Success Result Card (Hidden until complete) -->
-        <div id="extraction-result-card" class="hidden p-4 rounded-xl bg-secondary/10 border border-secondary/40 flex flex-col gap-3">
-          <div class="flex items-center gap-2.5 text-secondary font-bold text-sm">
-            <span class="material-symbols-outlined text-[20px]">check_circle</span>
-            <span id="extraction-result-heading">Tally Company Successfully Ingested!</span>
-          </div>
-          <div id="extraction-result-details" class="text-xs text-on-surface-variant font-mono space-y-1">
-            <!-- Dynamically populated -->
-          </div>
-          <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-secondary/20">
-            <a id="link-open-railway" href="#" target="_blank" class="hidden flex-1 py-2 px-3 rounded-lg bg-gradient-to-r from-blue-600 to-primary text-on-primary font-bold text-xs flex items-center justify-center gap-1.5 hover:brightness-110 transition-all shadow-md">
-              <span class="material-symbols-outlined text-[16px]">open_in_new</span>
-              <span>Open on Railway Cloud</span>
-            </a>
-            <button id="btn-view-ingested-vouchers" class="flex-1 py-2 px-3 rounded-lg bg-secondary text-on-secondary font-bold text-xs flex items-center justify-center gap-1.5 hover:brightness-110 transition-all">
-              <span class="material-symbols-outlined text-[16px]">receipt_long</span>
-              <span>View Local Vouchers &amp; GSTR-1</span>
-            </button>
-            <button id="btn-close-and-refresh" class="py-2 px-3 rounded-lg bg-surface-container border border-outline-variant text-on-surface text-xs font-medium hover:bg-surface-container-high transition-all">
-              Done
-            </button>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </div>
 
   <!-- Modal 2: Tally Live Synchronization Hub -->
   <div id="sync-agent-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden transition-all duration-300">

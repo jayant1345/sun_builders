@@ -48,7 +48,7 @@ class TallyClient:
                     raw_xml = clean_tally_xml(resp.read().decode('utf-8', errors='ignore'))
                     root = ET.fromstring(raw_xml)
                     companies = [elem.text for elem in root.findall(".//COMPANYNAME") if elem.text]
-                    if not comps:
+                    if not companies:
                         companies = [elem.text for elem in root.findall(".//NAME") if elem.text and not elem.text.startswith("$$")]
                     if companies:
                         return companies

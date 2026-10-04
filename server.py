@@ -9,7 +9,6 @@ from core.tally_client import TallyClient
 from core.tally_file_reader import TallyFileReader
 from core.gst_rules import RealEstateGSTRules
 from core.excel_generator import ExcelGenerator
-from core.tally_installer import TallyManager
 from core.db import db
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -52,23 +51,16 @@ def api_status():
     is_cloud = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_STATIC_URL") or os.environ.get("DYNO") or os.environ.get("RENDER") or (os.environ.get("PORT") and not os.path.exists(r"C:\Windows")))
     client = TallyClient()
     connected = client.is_connected()
-    mgr = TallyManager(BASE_DIR)
     
     companies = []
     if connected:
         companies = client.get_loaded_companies()
 
-    has_010010 = os.path.exists(os.path.join(BASE_DIR, "data", "010010"))
-
     return jsonify({
         "is_cloud": is_cloud,
         "tally_connected": connected,
         "tally_port": 9000,
-        "loaded_companies": companies,
-        "database_extracted": has_010010,
-        "database_path": os.path.join(BASE_DIR, "data", "010010"),
-        "tally_installed": mgr.is_tally_installed(),
-        "installer_available": os.path.exists(mgr.installer_path)
+        "loaded_companies": companies
     })
 
 @app.route("/api/config", methods=["GET"])
@@ -166,180 +158,17 @@ def api_download(filename):
         return send_file(file_path, as_attachment=True, download_name=filename)
     return jsonify({"error": "File not found"}), 404
 
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@app.route("/api/upload_backup", methods=["POST"])
-def api_upload_backup():
-    """Handles direct file upload (.zip or .rar) from the browser or local path."""
-    from extract_backup import extract_archive
-    archive_path = None
-    
-    if "file" in request.files:
-        f = request.files["file"]
-        if f.filename == "":
-            return jsonify({"status": "error", "message": "No file selected."}), 400
-        save_path = os.path.join(UPLOAD_DIR, f.filename)
-        f.save(save_path)
-        archive_path = save_path
-    cloud_url = None
-    if request.is_json:
-        data = request.get_json() or {}
-        archive_path = data.get("path") or data.get("backup_path") or data.get("file_path")
-        cloud_url = data.get("cloud_url")
-        if not archive_path or not os.path.exists(archive_path):
-            return jsonify({"status": "error", "message": f"File not found: {archive_path}"}), 404
-    else:
-        cloud_url = request.form.get("cloud_url")
-
-    try:
-        res = extract_archive(archive_path)
-        if res.get("success"):
-            cloud_synced = False
-            cloud_sync_msg = None
-            if cloud_url and cloud_url.strip():
-                try:
-                    from tally_sync_agent import sync_to_railway
-                    cloud_synced = sync_to_railway(cloud_url.strip())
-                    cloud_sync_msg = f"Vouchers automatically synced to Railway: {cloud_url}" if cloud_synced else "Cloud sync could not connect."
-                except Exception as se:
-                    print("Auto cloud sync error:", se)
-                    cloud_sync_msg = str(se)
-
-            companies = res.get("companies", [])
-            master = load_project_master()
-            proj_dict = master.get("projects", {})
-            primary_proj_name = None
-            primary_code = companies[0].get("code") if companies else "010010"
-            for comp in companies:
-                c_code = comp.get("code")
-                found_name = None
-                for pkey, pcfg in proj_dict.items():
-                    if pcfg.get("code") == c_code or c_code in pcfg.get("aliases", []):
-                        found_name = pcfg.get("display_name")
-                        comp["project_name"] = found_name
-                        break
-                if not found_name:
-                    found_name = f"Sun Builders Company {c_code}"
-                    proj_dict[f"COMPANY_{c_code}"] = {
-                        "code": c_code,
-                        "aliases": [c_code],
-                        "display_name": found_name,
-                        "type": "Residential",
-                        "mem_sheet": "DATA",
-                        "prefix": f"CMP{c_code[-3:] if len(c_code)>=3 else c_code}",
-                        "default_residential_rate": 0.01,
-                        "has_bu": False,
-                        "bu_permission_date": None,
-                        "notes": f"Auto-mounted Tally company {c_code}"
-                    }
-                    comp["project_name"] = found_name
-                if not primary_proj_name:
-                    primary_proj_name = found_name
-            master["projects"] = proj_dict
-            save_project_master(master)
-
-            # Auto-ingest any uploaded Excel files (.xlsx), XML daybooks, or JSON sync files directly into DB
-            imported = res.get("imported_files", [])
-            for imp in imported:
-                full_imp_path = os.path.join(BASE_DIR, "data", imp)
-                if imp.lower().endswith((".xlsx", ".xls")):
-                    try:
-                        ingest_excel_file(full_imp_path)
-                    except Exception as ie:
-                        print(f"Error ingesting Excel file {imp}:", ie)
-                elif imp.endswith(".json") and imp.startswith("synced_"):
-                    try:
-                        with open(full_imp_path, "r", encoding="utf-8") as jf:
-                            jdata = json.load(jf)
-                            vchs = jdata.get("vouchers", [])
-                            if vchs:
-                                db.save_vouchers(primary_code, vchs)
-                    except Exception as je:
-                        print("Error auto-loading JSON vouchers into DB:", je)
-                elif imp.lower().endswith(".json"):
-                    try:
-                        with open(full_imp_path, "r", encoding="utf-8") as jf:
-                            jdata = json.load(jf)
-                            vchs = jdata.get("vouchers", []) if isinstance(jdata, dict) else (jdata if isinstance(jdata, list) else [])
-                            if vchs:
-                                db.save_vouchers(primary_code, vchs)
-                    except Exception as je2:
-                        print("Error auto-loading general JSON into DB:", je2)
-
-            # If the uploaded file itself was directly an Excel or JSON file
-            if archive_path:
-                if archive_path.lower().endswith((".xlsx", ".xls")):
-                    try:
-                        ingest_excel_file(archive_path)
-                    except Exception as aee:
-                        print("Error ingesting direct upload Excel:", aee)
-                elif archive_path.lower().endswith(".json"):
-                    try:
-                        with open(archive_path, "r", encoding="utf-8") as jf:
-                            jdata = json.load(jf)
-                            vchs = jdata.get("vouchers", []) if isinstance(jdata, dict) else (jdata if isinstance(jdata, list) else [])
-                            if vchs:
-                                db.save_vouchers(primary_code, vchs)
-                    except Exception as je3:
-                        print("Error ingesting direct upload JSON:", je3)
-
-            return jsonify({
-                "status": "success",
-                "message": res.get("message"),
-                "filename": os.path.basename(archive_path),
-                "companies": companies,
-                "project_code": primary_code,
-                "project_name": primary_proj_name,
-                "data_path": os.path.join(BASE_DIR, "data"),
-                "cloud_synced": cloud_synced,
-                "cloud_url": cloud_url,
-                "cloud_sync_message": cloud_sync_msg
-            })
-        else:
-            return jsonify({"status": "error", "message": res.get("message", "Extraction failed.")}), 500
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route("/api/extract", methods=["POST"])
-def api_extract():
-    return api_upload_backup()
-
-
-@app.route("/api/tally/setup", methods=["POST"])
-def api_tally_setup():
-    mgr = TallyManager(BASE_DIR)
-    if mgr.is_tally_installed():
-        success = mgr.launch_tally()
-        return jsonify({"status": "launched", "message": "Installed Tally application launched."})
-    else:
-        success = mgr.launch_installer()
-        return jsonify({"status": "installer_launched", "message": "Tally Setup Manager launched."})
-
-@app.route("/api/download/Sun_Tally_Sync.bat", methods=["GET"])
-def api_download_sync_bat():
-    """Generates and serves a standalone 1-Click Windows Tally Sync Connector batch file."""
-    cloud_url = request.host_url.rstrip("/")
-    bat_path = os.path.join(BASE_DIR, "Sun_Tally_Sync.bat")
-    if os.path.exists(bat_path):
-        # newline="" preserves the file's CRLF endings exactly; without it,
-        # Python's universal-newline translation would strip them to LF,
-        # which breaks a Windows batch file.
-        with open(bat_path, "r", encoding="utf-8", newline="") as f:
-            content = f.read()
-        content = content.replace("https://sunbuilders-production.up.railway.app", cloud_url)
-        from flask import Response
-        return Response(content, mimetype="application/x-bat", headers={"Content-Disposition": "attachment; filename=Sun_Tally_Sync.bat"})
-    return jsonify({"error": "Script template not found"}), 404
 
 @app.route("/api/tally/sync_live", methods=["POST"])
 def api_tally_sync_live():
     """
-    Direct button-based live sync with Tally 7.1 / TallyPrime on Port 9000.
+    Direct button-based live sync with Tally 7.1 / TallyPrime on Port 9000 via Python XML engine.
     1. Checks connection to Port 9000.
-    2. If Tally is running locally, pulls live company daybook vouchers via XML API.
-    3. Formats them with unit numbers, deduction offsets, and statutory BU rules.
-    4. Persists to database and syncs to cloud.
+    2. Identifies active company currently open in Tally.
+    3. Extracts authentic daybook vouchers via Python TDL engine.
+    4. Applies Real Estate GST Rules (BU exemption cutoff + 5 non-GST deductions).
+    5. Saves locally to database & pushes automatically to Railway Cloud.
     """
     is_cloud = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_STATIC_URL") or os.environ.get("DYNO") or os.environ.get("RENDER") or (os.environ.get("PORT") and not os.path.exists(r"C:\Windows")))
     client = TallyClient()
@@ -351,9 +180,8 @@ def api_tally_sync_live():
                 "status": "cloud_mode",
                 "connected": False,
                 "is_cloud": True,
-                "message": "Cloud Mode: This dashboard is hosted on Railway Cloud, so it cannot directly query Port 9000 on your local PC across the internet.",
-                "suggestion": "Please double-click 'Sun_Tally_Sync.bat' on your PC (or click the Download button below). It connects to your local Tally (Port 9000) and securely uploads all vouchers here.",
-                "download_url": "/api/download/Sun_Tally_Sync.bat"
+                "message": "Railway Cloud Mode: Tally runs locally on your PC (Port 9000).",
+                "suggestion": "To sync from Port 9000: Open your local dashboard at http://localhost:5050, or run 'python tally_sync_agent.py' on your PC. It will extract and auto-push everything here!"
             })
         else:
             return jsonify({
@@ -361,8 +189,7 @@ def api_tally_sync_live():
                 "connected": False,
                 "is_cloud": False,
                 "message": "Local Tally is not responding on Port 9000.",
-                "suggestion": "Please ensure Tally 7.1 / Prime is open on your PC and your company is loaded.",
-                "download_url": "/api/download/Sun_Tally_Sync.bat"
+                "suggestion": "Please ensure Tally 7.1 / TallyPrime is open on your PC with your Sun Builders company loaded."
             })
 
     companies = client.get_loaded_companies()
@@ -370,36 +197,29 @@ def api_tally_sync_live():
         return jsonify({
             "status": "warning",
             "connected": True,
-            "message": "Tally is online on Port 9000, but no company is currently open. Please load your Sun Builders company.",
-            "download_url": "/api/download/Sun_Tally_Sync.bat"
+            "message": "Tally is online on Port 9000, but no company is currently open.",
+            "suggestion": "Please select and open your company in Tally (e.g. 010010 Sun Footprint, 010011 Sun Park West, 010000 Sun Atmosphere)."
         })
 
     active_comp = companies[0]
-    master = load_project_master()
-    proj_dict = master.get("projects", {})
-    
-    matched_cfg = None
-    for pkey, pcfg in proj_dict.items():
-        if pcfg.get("code") in active_comp or pcfg.get("display_name", "").lower() in active_comp.lower() or active_comp.lower() in pcfg.get("display_name", "").lower():
-            matched_cfg = pcfg
-            break
-
-    target_code = matched_cfg.get("code", "010010") if matched_cfg else "010010"
-    project_display = matched_cfg.get("display_name", active_comp) if matched_cfg else active_comp
+    from tally_sync_agent import resolve_company_code, extract_from_live_tally
+    target_code, project_display = resolve_company_code(active_comp)
 
     vouchers = []
     active_company_name = active_comp
     try:
-        from tally_sync_agent import extract_from_live_tally
         comp_extracted, vouchers = extract_from_live_tally("http://localhost:9000")
         if comp_extracted:
             active_company_name = comp_extracted
+            target_code, project_display = resolve_company_code(active_company_name)
     except Exception as e:
         print("[sync_live error]:", e)
 
     if not vouchers:
         # Check cached synced data
-        cached_file = os.path.join(BASE_DIR, "data", "synced_sun_footprint.json")
+        cached_file = os.path.join(BASE_DIR, "data", f"synced_{project_display.replace(' ', '_').lower()}.json")
+        if not os.path.exists(cached_file):
+            cached_file = os.path.join(BASE_DIR, "data", "synced_sun_footprint.json")
         if os.path.exists(cached_file):
             try:
                 with open(cached_file, "r", encoding="utf-8") as cjf:
@@ -409,6 +229,7 @@ def api_tally_sync_live():
                 pass
 
     sync_res = {"inserted": 0, "updated": 0, "unchanged": 0, "periods": []}
+    cloud_synced = False
     if vouchers:
         sync_res = db.save_vouchers(target_code, vouchers)
         sync_file = os.path.join(BASE_DIR, "data", f"synced_{project_display.replace(' ', '_').lower()}.json")
@@ -418,6 +239,27 @@ def api_tally_sync_live():
         except Exception:
             pass
 
+        # Push to Railway Cloud if running locally
+        if not is_cloud:
+            try:
+                import urllib.request
+                railway_endpoint = "https://sunbuilders-production.up.railway.app/api/vouchers/sync"
+                req_cloud = urllib.request.Request(
+                    railway_endpoint,
+                    data=json.dumps({
+                        "project": project_display,
+                        "company_code": target_code,
+                        "source": f"Live Tally - {active_company_name}",
+                        "count": len(vouchers),
+                        "vouchers": vouchers
+                    }).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req_cloud, timeout=12) as c_resp:
+                    cloud_synced = True
+            except Exception as _ce:
+                print(f"[Cloud Sync Note]: {_ce}")
+
     return jsonify({
         "status": "success",
         "connected": True,
@@ -425,13 +267,14 @@ def api_tally_sync_live():
         "project_code": target_code,
         "project_name": project_display,
         "count": len(vouchers),
+        "cloud_synced": cloud_synced,
         "new_inserted": sync_res.get("inserted", 0),
         "updated": sync_res.get("updated", 0),
         "unchanged": sync_res.get("unchanged", 0),
         "periods": sync_res.get("periods", []),
         "total_gross": sum(v.get("cr_amount", 0) for v in vouchers),
         "total_taxable": sum(v.get("taxable_amount", 0) for v in vouchers),
-        "message": f"Incremental Sync Complete: +{sync_res.get('inserted', 0)} new vouchers added, {sync_res.get('unchanged', 0)} existing records verified (0 duplicates)."
+        "message": f"Incremental Sync Complete: +{sync_res.get('inserted', 0)} new vouchers added, {sync_res.get('unchanged', 0)} verified (0 duplicates)."
     })
 
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "project_master.json")
