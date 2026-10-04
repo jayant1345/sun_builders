@@ -1034,18 +1034,6 @@ def api_vouchers_purge_fake():
         "message": f"Successfully purged {purged_count} synthetic vouchers. Only 100% authentic Tally vouchers remain in the database."
     })
 
-@app.route("/api/admin/dedupe_vouchers", methods=["POST"])
-def api_admin_dedupe_vouchers():
-    """
-    One-time cleanup: removes exact full-duplicate voucher rows (same project,
-    voucher_number, date, amount, party_name, classification) accumulated from
-    historical sync bugs, keeping the earliest copy of each. Pass {"project_codes":
-    [...]} to scope it, or omit to run across all known project codes.
-    """
-    data = request.get_json(silent=True) or {}
-    project_codes = data.get("project_codes") or ["010000", "010002", "010009", "010010", "010011", "010015"]
-    results = [db.dedupe_exact_vouchers(code) for code in project_codes]
-    return jsonify({"status": "success", "results": results})
 
 
 if __name__ == "__main__":
