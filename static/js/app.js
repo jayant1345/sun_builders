@@ -642,6 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 8. Button-Based Live Sync with Tally Port 9000 & Comprehensive Audit Details Modal
     let currentModalVouchers = [];
+    let currentModalDuplicatesPrevented = 0;
 
     function renderModalTable(vouchers) {
         const tbody = document.getElementById('modal-vouchers-tbody');
@@ -662,7 +663,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (countBadge) {
-            countBadge.textContent = `Showing All ${vouchers.length.toLocaleString('en-IN')} Authentic Vouchers (0 Duplicates)`;
+            countBadge.textContent = `Showing All ${vouchers.length.toLocaleString('en-IN')} Authentic Vouchers (${currentModalDuplicatesPrevented.toLocaleString('en-IN')} Duplicates Prevented)`;
         }
 
         const fragment = document.createDocumentFragment();
@@ -896,21 +897,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.status === 'success') {
                 const totalCount = data.count || 0;
+                const duplicatesPrevented = data.duplicates_prevented ?? data.unchanged ?? 0;
+                currentModalDuplicatesPrevented = duplicatesPrevented;
                 setModalPipelineStage(2, `Identified Active Company: ${data.company}`, 50);
                 addModalLog(`Identified Active Company in Tally: ${data.company}`, "INFO");
 
                 setModalPipelineStage(3, `Streaming Full Daybook (${totalCount} Vouchers)...`, 75);
                 addModalLog(`Extracted ${totalCount} authentic vouchers from Tally Daybook collection...`, "INFO");
 
-                setModalPipelineStage(4, "Executing Deduplication & Verification (0 Duplicates)...", 90);
-                addModalLog(`Deduplication: ${data.unchanged || totalCount} verified consistent, +${data.new_inserted || 0} new. 0 DUPLICATES ENTERED.`, "SUCCESS");
+                setModalPipelineStage(4, `Executing Deduplication & Verification (${duplicatesPrevented.toLocaleString('en-IN')} Duplicates Prevented)...`, 90);
+                addModalLog(`Deduplication: ${duplicatesPrevented.toLocaleString('en-IN')} already-synced vouchers recognized and skipped, +${data.new_inserted || 0} new inserted.`, "SUCCESS");
 
                 setTimeout(() => {
                     setModalPipelineStage(5, `Live Sync Complete · ${data.project_name} (${totalCount} Vouchers)`, 100);
                     addModalLog(`✓ Sync finished successfully for ${data.company}. Ready for GSTR-1 compilation.`, "SUCCESS");
                 }, 200);
 
-                appendLog('SUCCESS', `✓ Ingested ${totalCount} authentic vouchers from Tally (${data.company}) with 0 duplicates!`);
+                appendLog('SUCCESS', `✓ Ingested ${totalCount} authentic vouchers from Tally (${data.company}), ${duplicatesPrevented.toLocaleString('en-IN')} duplicates prevented!`);
 
                 // 1. Update Modal Headers & Details Cards
                 const modalCompany = document.getElementById('modal-company-name');
@@ -931,7 +934,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const modalDedup = document.getElementById('modal-dedup-status');
                 if (modalDedup) {
-                    modalDedup.textContent = '0 Duplicates Entered';
+                    modalDedup.textContent = `${duplicatesPrevented.toLocaleString('en-IN')} Duplicates Prevented`;
                 }
 
                 const modalDedupSub = document.getElementById('modal-dedup-sub');
@@ -1034,7 +1037,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnDumpAll.addEventListener('click', () => {
             if (modalSearchInput) modalSearchInput.value = '';
             renderModalTable(currentModalVouchers);
-            addModalLog(`Dumped all ${currentModalVouchers.length.toLocaleString('en-IN')} vouchers without filter (0 Duplicates verified).`, 'SUCCESS');
+            addModalLog(`Dumped all ${currentModalVouchers.length.toLocaleString('en-IN')} vouchers without filter (${currentModalDuplicatesPrevented.toLocaleString('en-IN')} duplicates prevented this sync).`, 'SUCCESS');
         });
     }
 
