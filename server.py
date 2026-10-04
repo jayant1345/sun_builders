@@ -904,22 +904,6 @@ def api_vouchers():
     except Exception as e:
         print("[DB Fetch Notice]:", e)
 
-    # 2. Also check synced JSON file if available
-    sync_file = os.path.join(BASE_DIR, "data", f"synced_{pcfg['name'].replace(' ', '_').lower()}.json")
-    if os.path.exists(sync_file):
-        try:
-            with open(sync_file, "r", encoding="utf-8") as f:
-                sync_data = json.load(f)
-            for v in sync_data.get("vouchers", []):
-                v_num = v.get("vch_no") or ""
-                v_date = v.get("date") or ""
-                v_key = f"{v_num}_{v_date}_{v.get('cr_amount')}"
-                if v_key not in seen_vch:
-                    seen_vch.add(v_key)
-                    all_vouchers.append(v)
-        except Exception as e:
-            print("[Sync File Notice]:", e)
-
     # Filter out any lingering synthetic vouchers
     all_vouchers = [v for v in all_vouchers if not str(v.get("vch_no", "")).startswith("FP-") and not str(v.get("vch_no", "")).startswith("VCH-FP-")]
 
