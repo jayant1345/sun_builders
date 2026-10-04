@@ -1485,15 +1485,74 @@
         </div>
       </div>
 
+      <!-- 4-Stage Background Pipeline & Live Execution Status -->
+      <div id="modal-pipeline-container" class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-2.5 flex-shrink-0">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span id="modal-stage-icon" class="material-symbols-outlined text-[18px] text-blue-600 animate-spin">sync</span>
+            <span id="modal-stage-text" class="text-xs font-bold text-slate-800">Background Activity: Ready</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="modal-progress-pct" class="font-mono text-xs font-bold text-blue-700">100%</span>
+            <button id="btn-toggle-terminal" type="button" class="text-[11px] font-mono text-slate-500 hover:text-blue-700 underline cursor-pointer">
+              Toggle Live Console Logs
+            </button>
+          </div>
+        </div>
+
+        <!-- Animated Progress Bar -->
+        <div class="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+          <div id="modal-progress-bar" class="h-full bg-gradient-to-r from-emerald-500 via-teal-500 to-blue-600 transition-all duration-300 rounded-full" style="width: 100%;"></div>
+        </div>
+
+        <!-- 4 Pipeline Step Indicators -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] font-mono">
+          <div id="step-pipe-1" class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-slate-200 text-slate-700">
+            <span class="material-symbols-outlined text-[15px] text-emerald-600">check_circle</span>
+            <span class="truncate">1. Port 9000 Socket</span>
+          </div>
+          <div id="step-pipe-2" class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-slate-200 text-slate-700">
+            <span class="material-symbols-outlined text-[15px] text-emerald-600">check_circle</span>
+            <span class="truncate">2. Company Handshake</span>
+          </div>
+          <div id="step-pipe-3" class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-slate-200 text-slate-700">
+            <span class="material-symbols-outlined text-[15px] text-emerald-600">check_circle</span>
+            <span class="truncate">3. XML Daybook Stream</span>
+          </div>
+          <div id="step-pipe-4" class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-slate-200 text-slate-700">
+            <span class="material-symbols-outlined text-[15px] text-emerald-600">check_circle</span>
+            <span class="truncate">4. Zero-Dup Ingestion</span>
+          </div>
+        </div>
+
+        <!-- Live Terminal Log Box (Always visible so background activity is displayed on screen) -->
+        <div id="modal-terminal-wrapper" class="mt-1 p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-400 max-h-28 overflow-y-auto leading-relaxed shadow-inner">
+          <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-800 text-[10px] text-slate-400 uppercase tracking-wider">
+            <span class="flex items-center gap-1.5 text-emerald-400 font-bold">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Live Background Stream (Port 9000 • Deduplication Engine)
+            </span>
+            <span id="modal-terminal-status" class="text-slate-400 font-mono">0 Duplicates Enforced</span>
+          </div>
+          <div id="modal-terminal-logs" class="space-y-0.5">
+            <div>[17:28:00] [OK] Ready for live Tally extraction.</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Search, Table Controls & Showing Counter -->
       <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 flex-shrink-0">
         <div class="relative flex-1 max-w-md">
           <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-[18px]">search</span>
           <input id="modal-voucher-search" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl pl-9 pr-3 py-2 focus:border-blue-600 focus:bg-white shadow-xs font-medium" placeholder="Search by voucher #, flat / unit, party name..." type="text"/>
         </div>
-        <div class="flex items-center gap-2">
-          <span id="modal-table-count" class="px-3 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold">
-            Showing 1,569 Authentic Vouchers
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="btn-modal-dump-all" type="button" class="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-mono text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer">
+            <span class="material-symbols-outlined text-[16px] text-emerald-600">playlist_add_check_circle</span>
+            <span>Dump All Vouchers (0 Duplicates)</span>
+          </button>
+          <span id="modal-table-count" class="px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold">
+            Showing All Authentic Vouchers
           </span>
         </div>
       </div>

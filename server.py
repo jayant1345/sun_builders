@@ -280,6 +280,21 @@ def api_tally_sync_live():
             except Exception as _ce:
                 print(f"[Cloud Sync Note]: {_ce}")
 
+    # Strict in-memory deduplication to guarantee zero duplicate vouchers
+    unique_vouchers = []
+    seen_vch_keys = set()
+    for v in vouchers:
+        v_num = str(v.get("vch_no") or v.get("voucher_number") or "").strip().lower()
+        v_date = str(v.get("date") or "").strip()
+        v_amt = round(float(v.get("cr_amount") or v.get("amount") or 0), 2)
+        v_party = str(v.get("member_name") or v.get("name") or "").strip().lower()
+        v_key = (v_num, v_date, v_amt, v_party)
+        if v_key in seen_vch_keys:
+            continue
+        seen_vch_keys.add(v_key)
+        unique_vouchers.append(v)
+    vouchers = unique_vouchers
+
     total_gross = sum(float(v.get("cr_amount", 0) or v.get("amount", 0)) for v in vouchers)
     total_deductions = sum(float(v.get("deductions", 0) or 0) for v in vouchers)
     total_taxable = sum(float(v.get("taxable_amount", 0) or 0) for v in vouchers)
@@ -296,13 +311,13 @@ def api_tally_sync_live():
         "new_inserted": sync_res.get("inserted", 0),
         "updated": sync_res.get("updated", 0),
         "unchanged": sync_res.get("unchanged", len(vouchers)),
-        "duplicates_prevented": sync_res.get("unchanged", len(vouchers)),
+        "duplicates_prevented": len(seen_vch_keys) - len(vouchers) if len(seen_vch_keys) > len(vouchers) else sync_res.get("unchanged", len(vouchers)),
         "periods": list(sync_res.get("periods", [])),
         "total_gross": total_gross,
         "total_deductions": total_deductions,
         "total_taxable": total_taxable,
-        "vouchers": vouchers[:500],
-        "message": f"Full Tally Dump Synchronized: {len(vouchers)} vouchers loaded with 0 duplicates ({sync_res.get('inserted', 0)} new, {sync_res.get('unchanged', 0)} consistent)."
+        "vouchers": vouchers,
+        "message": f"Full Tally Dump Synchronized: {len(vouchers)} vouchers loaded with 0 duplicates ({sync_res.get('inserted', 0)} new, {sync_res.get('unchanged', len(vouchers))} consistent)."
     })
 
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "project_master.json")
