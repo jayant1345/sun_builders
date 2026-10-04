@@ -431,6 +431,44 @@ class DatabaseManager:
             print(f"[DatabaseManager] Error counting vouchers: {e}")
         return counts
 
+    def dedupe_exact_vouchers(self, project_code):
+        """
+        One-time cleanup: removes rows that are exact full duplicates - same
+        project_code, voucher_number, date, amount, party_name AND classification -
+        keeping only the earliest (lowest id) row per group. Deliberately does NOT
+        key on voucher_number/date/amount alone, since Tally numbers vouchers
+        separately per voucher type, so two genuinely different vouchers can share
+        a (voucher_number, date) pair; requiring every field to match avoids ever
+        deleting a real, distinct voucher.
+        """
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                placeholder = "%s" if self.is_postgres else "?"
+                before = None
+                cur.execute(f"SELECT COUNT(*) FROM vouchers WHERE project_code = {placeholder}", (project_code,))
+                before = cur.fetchone()[0]
+
+                cur.execute(f"""
+                    DELETE FROM vouchers
+                    WHERE project_code = {placeholder}
+                    AND id NOT IN (
+                        SELECT MIN(id) FROM vouchers
+                        WHERE project_code = {placeholder}
+                        GROUP BY project_code, voucher_number, date, amount, party_name, classification
+                    )
+                """, (project_code, project_code))
+                conn.commit()
+
+                cur.execute(f"SELECT COUNT(*) FROM vouchers WHERE project_code = {placeholder}", (project_code,))
+                after = cur.fetchone()[0]
+                removed = before - after
+                print(f"[DatabaseManager] Dedup for {project_code}: {before} -> {after} ({removed} exact duplicate rows removed).")
+                return {"project_code": project_code, "before": before, "after": after, "removed": removed}
+        except Exception as e:
+            print(f"[DatabaseManager] Error during dedupe_exact_vouchers for {project_code}: {e}")
+            return {"project_code": project_code, "error": str(e)}
+
 
     def purge_fake_vouchers(self):
         """Purges any synthetic / mock vouchers (e.g. FP-2608-*) from the database."""
