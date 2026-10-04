@@ -1,7 +1,15 @@
 import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
+import re
 from datetime import datetime
+
+def clean_tally_xml(xml_str: str) -> str:
+    """Removes non-printable chars, fixes unescaped ampersands, and cleans control entities."""
+    s = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', xml_str)
+    s = re.sub(r'&#(?:0?[0-8]|1[1-2]|1[4-9]|2[0-9]|3[0-1]);', '', s)
+    s = re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', s)
+    return s
 
 class TallyClient:
     """
@@ -14,16 +22,15 @@ class TallyClient:
             self.url = f"http://{host}:{port}"
 
     def is_connected(self) -> bool:
-        """Checks if Tally is running by sending a real Tally XML request and
-        verifying the response actually parses as Tally XML. A bare HTTP 200
-        is not enough, since other local dev tools can also listen on 9000."""
+        """Checks if Tally is running and responding to XML requests."""
         try:
             req_xml = """<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Companies</ID></HEADER><BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY></ENVELOPE>"""
             req = urllib.request.Request(self.url, data=req_xml.encode('utf-8'), headers={'Content-Type': 'text/xml'})
             with urllib.request.urlopen(req, timeout=3) as resp:
                 if resp.status != 200:
                     return False
-                ET.fromstring(resp.read())
+                raw = resp.read().decode('utf-8', errors='ignore')
+                ET.fromstring(clean_tally_xml(raw))
                 return True
         except Exception:
             return False
@@ -38,42 +45,49 @@ class TallyClient:
             try:
                 req = urllib.request.Request(self.url, data=req_xml.encode('utf-8'), headers={'Content-Type': 'text/xml'})
                 with urllib.request.urlopen(req, timeout=5) as resp:
-                    raw_xml = resp.read().decode('utf-8', errors='ignore')
+                    raw_xml = clean_tally_xml(resp.read().decode('utf-8', errors='ignore'))
                     root = ET.fromstring(raw_xml)
                     companies = [elem.text for elem in root.findall(".//COMPANYNAME") if elem.text]
-                    if not companies:
+                    if not comps:
                         companies = [elem.text for elem in root.findall(".//NAME") if elem.text and not elem.text.startswith("$$")]
                     if companies:
                         return companies
-            except Exception as e:
+            except Exception:
                 pass
         return []
 
-    def export_vouchers_xml(self, company_name: str, from_date_yyyymmdd: str = "20000101", to_date_yyyymmdd: str = "20991231") -> str:
+    def export_all_vouchers_xml(self, company_name: str) -> str:
         """
-        Exports all vouchers for the specified company and date range in native Tally XML format.
+        Exports all vouchers for the specified company via robust TDL Collection.
         """
-        req_xml = f"""<ENVELOPE>
+        vch_req = f"""<ENVELOPE>
             <HEADER>
                 <VERSION>1</VERSION>
                 <TALLYREQUEST>Export</TALLYREQUEST>
-                <TYPE>Data</TYPE>
-                <ID>Voucher Register</ID>
+                <TYPE>Collection</TYPE>
+                <ID>CustomAllVouchers</ID>
             </HEADER>
             <BODY>
                 <DESC>
                     <STATICVARIABLES>
                         <SVCURRENTCOMPANY>{company_name}</SVCURRENTCOMPANY>
-                        <SVFROMDATE>{from_date_yyyymmdd}</SVFROMDATE>
-                        <SVTODATE>{to_date_yyyymmdd}</SVTODATE>
                         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
                     </STATICVARIABLES>
+                    <TDL>
+                        <TDLMESSAGE>
+                            <COLLECTION NAME="CustomAllVouchers" ISINITIALIZE="Yes">
+                                <TYPE>Voucher</TYPE>
+                                <FETCH>DATE, VOUCHERTYPENAME, VOUCHERNUMBER, NARRATION, ALLLEDGERENTRIES.LIST</FETCH>
+                            </COLLECTION>
+                        </TDLMESSAGE>
+                    </TDL>
                 </DESC>
             </BODY>
         </ENVELOPE>"""
-        req = urllib.request.Request(self.url, data=req_xml.encode('utf-8'), headers={'Content-Type': 'text/xml'})
-        with urllib.request.urlopen(req, timeout=600) as resp:
-            return resp.read().decode('utf-8', errors='ignore')
+
+        req = urllib.request.Request(self.url, data=vch_req.encode('utf-8'), headers={'Content-Type': 'text/xml; charset=utf-8'})
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            return clean_tally_xml(resp.read().decode('utf-8', errors='ignore'))
 
     def parse_vouchers(self, raw_xml: str) -> list:
         """
@@ -98,7 +112,7 @@ class TallyClient:
                         amount = 0.0
                     entries.append({
                         "ledger_name": ledger_name,
-                        "amount": amount  # in Tally negative is Credit, positive is Debit
+                        "amount": amount
                     })
 
                 vouchers.append({

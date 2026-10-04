@@ -388,53 +388,25 @@ def api_tally_sync_live():
     project_display = matched_cfg.get("display_name", active_comp) if matched_cfg else active_comp
 
     vouchers = []
+    active_company_name = active_comp
     try:
-        xml_data = client.export_vouchers_xml(active_comp, "20000101", "20991231")
-        raw_vchs = client.parse_vouchers(xml_data)
-        if raw_vchs:
-            idx = 1
-            for vch in raw_vchs:
-                vnum = vch.get("voucher_number") or f"VCH-{idx:03d}"
-                vdate = vch.get("date") or "01-08-2026"
-                if len(vdate) == 8 and vdate.isdigit():
-                    vdate = f"{vdate[6:8]}-{vdate[4:6]}-{vdate[0:4]}"
-                cr_amount = 0.0
-                deductions = 0.0
-                member_ledger = ""
-                for ent in vch.get("entries", []):
-                    amt = ent.get("amount", 0.0)
-                    lname = ent.get("ledger_name", "")
-                    if amt < 0:
-                        cr_amount = abs(amt)
-                        member_ledger = lname
-                    elif any(k in lname.lower() for k in ["stamp", "reg"]):
-                        deductions += abs(amt)
-                if cr_amount > 0:
-                    flat_no, clean_name = parse_unit_and_names(member_ledger)
-                    taxable = max(0.0, cr_amount - deductions)
-                    vouchers.append({
-                        "vch_no": vnum,
-                        "date": vdate,
-                        "type": "Member Receipt",
-                        "flat_no": flat_no,
-                        "unit": flat_no,
-                        "member_name": clean_name,
-                        "name": clean_name,
-                        "raw_name": member_ledger,
-                        "project": project_display,
-                        "cr_amount": cr_amount,
-                        "deductions": deductions,
-                        "taxable_amount": taxable,
-                        "classification": "Taxable @ 1% (Affordable Residential)",
-                        "badge_type": "taxable-1"
-                    })
-                    idx += 1
+        from tally_sync_agent import extract_from_live_tally
+        comp_extracted, vouchers = extract_from_live_tally("http://localhost:9000")
+        if comp_extracted:
+            active_company_name = comp_extracted
     except Exception as e:
         print("[sync_live error]:", e)
 
     if not vouchers:
-        from tally_sync_agent import extract_from_local_files
-        vouchers = extract_from_local_files()
+        # Check cached synced data
+        cached_file = os.path.join(BASE_DIR, "data", "synced_sun_footprint.json")
+        if os.path.exists(cached_file):
+            try:
+                with open(cached_file, "r", encoding="utf-8") as cjf:
+                    cdata = json.load(cjf)
+                    vouchers = cdata.get("vouchers", [])
+            except Exception:
+                pass
 
     sync_res = {"inserted": 0, "updated": 0, "unchanged": 0, "periods": []}
     if vouchers:

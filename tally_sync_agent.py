@@ -1,10 +1,9 @@
 """
-Sun Builders - Local Tally to Railway Cloud Sync Agent
-======================================================
-Runs on the CA Office local Windows PC.
-1. Connects to local Tally running in Education Mode / Licensed Mode (Port 9000).
-2. Extracts daybook and member collection vouchers for selected project.
-3. Securely pushes the data to the Railway cloud web application.
+Sun Builders Projects LLP - 1-Click Tally to Railway Cloud Sync Agent
+=======================================================================
+Extracts 100% authentic vouchers directly from live TallyPrime / Tally.ERP 9 (Port 9000),
+sanitizes the Tally XML stream, analyzes member ledger receipts & statutory deductions,
+persists locally in data/ and SQLite, and securely transmits everything to Railway Cloud.
 """
 
 import os
@@ -16,202 +15,263 @@ import urllib.error
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, BASE_DIR)
+DATA_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
 
-from core.tally_client import TallyClient
+DEFAULT_RAILWAY_URL = "https://sunbuilders-production.up.railway.app"
 
-def check_tally(tally_url="http://localhost:9000"):
-    client = TallyClient(tally_url)
-    return client.is_connected()
+def clean_tally_xml(xml_str: str) -> str:
+    """
+    Sanitizes raw XML exported by Tally:
+    1. Removes non-printable control characters (ASCII 0-31, except 9, 10, 13).
+    2. Escapes naked ampersands ('&' not part of standard XML entities).
+    3. Cleans invalid numeric character references.
+    """
+    s = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', xml_str)
+    s = re.sub(r'&#(?:0?[0-8]|1[1-2]|1[4-9]|2[0-9]|3[0-1]);', '', s)
+    s = re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', s)
+    return s
 
-def extract_from_local_files():
-    """Fallback: reads local Excel master if Tally live port is offline."""
-    import openpyxl
-    excel_candidates = [
-        os.path.join(BASE_DIR, "data", "01.GSTR -1 AUG-26 SUN BUILDERS PROJECTS LLP ( FORMERLY KNOWN AS SUN REALTY).xlsx"),
-        r"C:\naman_ca\Sun_Builders\01.GSTR -1 AUG-26 SUN BUILDERS PROJECTS LLP ( FORMERLY KNOWN AS SUN REALTY).xlsx"
-    ]
-    target_path = None
-    for p in excel_candidates:
-        if os.path.exists(p):
-            target_path = p
-            break
-            
-    if not target_path:
-        return []
+def parse_unit_and_names(ledger_name: str):
+    if not ledger_name:
+        return "", ""
+    m = re.match(r"^([A-Za-z0-9\/\-\.]+)(?:,|\s\-\s|\s-\s|\s-\s*|;|\s)(.*)$", ledger_name.strip())
+    if m:
+        flat = m.group(1).strip()
+        name = m.group(2).strip()
+        return flat, name
+    return "", ledger_name.strip()
 
-    print(f"[*] Extracting member vouchers from local file: {os.path.basename(target_path)}")
-    wb = openpyxl.load_workbook(target_path, read_only=True, data_only=True)
-    vouchers = []
+def extract_from_live_tally(tally_url="http://localhost:9000"):
+    import xml.etree.ElementTree as ET
     
-    if "SUN REALTY FOOTPRINT- MEMBERS" in wb.sheetnames:
-        ws = wb["SUN REALTY FOOTPRINT- MEMBERS"]
-        idx = 1
-        for row in ws.iter_rows(values_only=True):
-            flat_no = str(row[0]).strip() if row[0] is not None else ""
-            name = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-            if not flat_no or not name:
-                continue
-            if any(k in flat_no for k in ["Flat No.", "Total", "Sun", "CALCULATION", "MEMBERS", "Payment"]):
-                continue
+    print("=" * 75)
+    print("  SUN BUILDERS - TALLY PRIME / ERP 9 LIVE EXTRACTION")
+    print(f"  Tally API URL: {tally_url}")
+    print("=" * 75)
 
-            def parse_float(val):
-                try:
-                    return float(val) if val is not None else 0.0
-                except (ValueError, TypeError):
-                    return 0.0
+    # 1. Discover Active Company
+    comp_req = """<ENVELOPE>
+        <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Companies</ID></HEADER>
+        <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY>
+    </ENVELOPE>"""
 
-            cr_amount = parse_float(row[2])
-            reg_dr = parse_float(row[4]) if len(row) > 4 else 0.0
-            stamp_dr = parse_float(row[6]) if len(row) > 6 else 0.0
-            deductions = stamp_dr + reg_dr
-            taxable = max(0.0, cr_amount - deductions)
+    try:
+        req = urllib.request.Request(tally_url, data=comp_req.encode('utf-8'), headers={'Content-Type': 'text/xml'})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            xml_res = clean_tally_xml(resp.read().decode('utf-8', errors='ignore'))
+            root = ET.fromstring(xml_res)
+            comps = [elem.text for elem in root.findall(".//COMPANYNAME") if elem.text]
+            if not comps:
+                comps = [elem.text for elem in root.findall(".//NAME") if elem.text and not elem.text.startswith("$$")]
+    except Exception as e:
+        print(f"[!] Could not connect to Tally on {tally_url}: {e}")
+        return None, []
 
-            clean_name = name
-            m = re.match(r"^[A-Za-z0-9\/\-\.]+(?:,|;|\s\-|\s)\s*(.+)$", name)
-            if m:
-                clean_name = m.group(1).strip()
+    if not comps:
+        print("[!] Tally is online, but no Company is currently open. Please open your company in Tally.")
+        return None, []
 
-            classification = "Taxable @ 1% (Affordable Residential)"
-            badge_type = "taxable-1"
-            if cr_amount == 0 and deductions > 0:
-                classification = "Non-GST Excluded (Pass-Through Fees)"
-                badge_type = "excluded"
-            elif deductions >= cr_amount and cr_amount > 0:
-                classification = "Non-GST Excluded (Stamp Duty / Reg Off-set)"
-                badge_type = "excluded"
+    active_company = comps[0]
+    print(f"[+] Loaded Company identified: '{active_company}'")
+    print("[*] Extracting all historical vouchers via TDL Collection...")
 
-            day = (idx % 28) + 1
-            vouchers.append({
-                "vch_no": f"FP-2608-{idx:03d}",
-                "date": f"{day:02d}-08-2026",
-                "type": "Member Receipt",
-                "flat_no": flat_no,
-                "member_name": clean_name,
-                "raw_name": name,
-                "project": "Sun Footprint",
-                "cr_amount": cr_amount,
-                "deductions": deductions,
-                "taxable_amount": taxable,
-                "classification": classification,
-                "badge_type": badge_type
-            })
-            idx += 1
-            
-    return vouchers
+    # 2. Query All Vouchers
+    vch_req = f"""<ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>Export</TALLYREQUEST>
+            <TYPE>Collection</TYPE>
+            <ID>CustomAllVouchers</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    <SVCURRENTCOMPANY>{active_company}</SVCURRENTCOMPANY>
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="CustomAllVouchers" ISINITIALIZE="Yes">
+                            <TYPE>Voucher</TYPE>
+                            <FETCH>DATE, VOUCHERTYPENAME, VOUCHERNUMBER, NARRATION, ALLLEDGERENTRIES.LIST</FETCH>
+                        </COLLECTION>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>"""
 
-def sync_to_railway(railway_url="http://localhost:5050", project_name="Sun Footprint"):
-    print("=" * 65)
-    print("      SUN BUILDERS - LOCAL TALLY TO RAILWAY SYNC AGENT")
-    print(f"      Cloud Destination: {railway_url}")
-    print("=" * 65)
+    try:
+        req2 = urllib.request.Request(tally_url, data=vch_req.encode('utf-8'), headers={'Content-Type': 'text/xml; charset=utf-8'})
+        with urllib.request.urlopen(req2, timeout=180) as resp2:
+            raw_xml = resp2.read().decode('utf-8', errors='ignore')
+    except Exception as e:
+        print(f"[!] Tally voucher extraction query failed: {e}")
+        return active_company, []
 
-    vouchers = []
-    tally_online = check_tally()
+    print(f"[+] Downloaded {len(raw_xml):,} bytes from Tally. Parsing...")
+    cleaned_xml = clean_tally_xml(raw_xml)
+    root2 = ET.fromstring(cleaned_xml)
+    vch_elements = root2.findall(".//VOUCHER")
+    print(f"[+] Parsed {len(vch_elements):,} total raw vouchers from Tally.")
 
-    if tally_online:
-        print("[OK] Local Tally connection established on Port 9000.")
-        client = TallyClient()
-        companies = client.get_loaded_companies()
-        print(f"[OK] Active Loaded Companies in Tally: {companies}")
-        
-        # If companies loaded, extract live vouchers
-        if companies:
-            comp_name = companies[0]
-            project_name = comp_name
-            print(f"[*] Querying live Tally Daybook for '{comp_name}'...")
+    parsed_vouchers = []
+    seen_keys = set()
+
+    for idx, v in enumerate(vch_elements, 1):
+        v_type = v.findtext("VOUCHERTYPENAME", "")
+        v_date_raw = v.findtext("DATE", "")
+        v_num = v.findtext("VOUCHERNUMBER", "") or f"VCH-{idx:04d}"
+        narr = v.findtext("NARRATION", "") or ""
+
+        v_date = v_date_raw
+        if len(v_date_raw) == 8 and v_date_raw.isdigit():
+            v_date = f"{v_date_raw[6:8]}-{v_date_raw[4:6]}-{v_date_raw[0:4]}"
+
+        cr_amount = 0.0
+        deductions = 0.0
+        member_ledger = ""
+        bank_cash = ""
+        entries = []
+
+        for le in v.findall(".//ALLLEDGERENTRIES.LIST"):
+            lname = le.findtext("LEDGERNAME", "") or ""
+            amt_str = le.findtext("AMOUNT", "0")
             try:
-                xml_data = client.export_vouchers_xml(comp_name, "20000101", "20991231")
-                raw_vchs = client.parse_vouchers(xml_data)
-                print(f"[OK] Extracted {len(raw_vchs)} live vouchers from Tally.")
-                if raw_vchs:
-                    from server import parse_unit_and_names
-                    idx = 1
-                    for vch in raw_vchs:
-                        vnum = vch.get("voucher_number") or f"VCH-{idx:03d}"
-                        vdate = vch.get("date") or "01-08-2026"
-                        if len(vdate) == 8 and vdate.isdigit():
-                            vdate = f"{vdate[6:8]}-{vdate[4:6]}-{vdate[0:4]}"
-                        cr_amount = 0.0
-                        deductions = 0.0
-                        member_ledger = ""
-                        for ent in vch.get("entries", []):
-                            amt = ent.get("amount", 0.0)
-                            lname = ent.get("ledger_name", "")
-                            if amt < 0:
-                                cr_amount = abs(amt)
-                                member_ledger = lname
-                            elif any(k in lname.lower() for k in ["stamp", "reg"]):
-                                deductions += abs(amt)
-                        if cr_amount > 0:
-                            flat_no, clean_name = parse_unit_and_names(member_ledger)
-                            taxable = max(0.0, cr_amount - deductions)
-                            vouchers.append({
-                                "vch_no": vnum,
-                                "date": vdate,
-                                "type": "Member Receipt",
-                                "flat_no": flat_no,
-                                "unit": flat_no,
-                                "member_name": clean_name,
-                                "name": clean_name,
-                                "raw_name": member_ledger,
-                                "project": project_name,
-                                "cr_amount": cr_amount,
-                                "deductions": deductions,
-                                "taxable_amount": taxable,
-                                "classification": "Taxable @ 1% (Affordable Residential)",
-                                "badge_type": "taxable-1"
-                            })
-                            idx += 1
-            except Exception as e:
-                print(f"[!] Warning reading live XML: {e}")
-                
-        # If live XML is empty or education mode restriction, fallback to local parsed records
-        if not vouchers:
-            vouchers = extract_from_local_files()
-    else:
-        print("[!] Local Tally (Port 9000) not responding. Reading local company database/files...")
-        vouchers = extract_from_local_files()
+                amt = float(amt_str)
+            except ValueError:
+                amt = 0.0
+            entries.append({"ledger_name": lname, "amount": amt})
+
+            if amt < 0:
+                cr_amount += abs(amt)
+                if not member_ledger:
+                    member_ledger = lname
+            elif amt > 0:
+                if any(k in lname.lower() for k in ["stamp", "reg", "maintenance", "electric", "auda", "aec"]):
+                    deductions += abs(amt)
+                elif not bank_cash:
+                    bank_cash = lname
+
+        if cr_amount == 0 and deductions == 0 and not entries:
+            continue
+
+        flat_no, member_name = parse_unit_and_names(member_ledger)
+        taxable_amt = max(0.0, cr_amount - deductions)
+
+        classification = "Taxable @ 1% (Affordable Residential)"
+        badge_type = "taxable-1"
+        if cr_amount == 0 and deductions > 0:
+            classification = "Non-GST Excluded (Pass-Through Fees)"
+            badge_type = "excluded"
+        elif deductions >= cr_amount and cr_amount > 0:
+            classification = "Non-GST Excluded (Stamp Duty / Reg Off-set)"
+            badge_type = "excluded"
+
+        vkey = (v_num, v_date, member_ledger, cr_amount)
+        if vkey in seen_keys:
+            continue
+        seen_keys.add(vkey)
+
+        parsed_vouchers.append({
+            "vch_no": v_num,
+            "date": v_date,
+            "type": v_type,
+            "flat_no": flat_no,
+            "unit": flat_no,
+            "member_name": member_name,
+            "name": member_name,
+            "raw_name": member_ledger,
+            "project": active_company,
+            "cr_amount": cr_amount,
+            "deductions": deductions,
+            "taxable_amount": taxable_amt,
+            "bank_cash": bank_cash,
+            "narration": narr,
+            "classification": classification,
+            "badge_type": badge_type
+        })
+
+    def date_sort_key(x):
+        try:
+            return datetime.strptime(x["date"], "%d-%m-%Y")
+        except Exception:
+            return datetime.min
+
+    parsed_vouchers.sort(key=date_sort_key, reverse=True)
+    return active_company, parsed_vouchers
+
+def sync(destination_url=DEFAULT_RAILWAY_URL):
+    company_name, vouchers = extract_from_live_tally()
 
     if not vouchers:
-        print("[X] No vouchers found to sync.")
+        # Fallback to existing saved json if live tally wasn't open
+        cached_file = os.path.join(DATA_DIR, "synced_sun_footprint.json")
+        if os.path.exists(cached_file):
+            print(f"[*] Live Tally not running; loading cached authentic dataset: {cached_file}")
+            with open(cached_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                vouchers = data.get("vouchers", [])
+                company_name = data.get("project", "Sun Footprint")
+
+    if not vouchers:
+        print("[X] No vouchers could be extracted. Please make sure Tally is open with your company.")
         return False
 
-    print(f"[OK] Prepared {len(vouchers)} vouchers for project '{project_name}'.")
+    print(f"\n[+] Total Authentic Vouchers Ready for Sync: {len(vouchers):,}")
     total_gross = sum(v.get("cr_amount", 0) for v in vouchers)
     total_taxable = sum(v.get("taxable_amount", 0) for v in vouchers)
     print(f"    - Gross Collections: Rs. {total_gross:,.2f}")
     print(f"    - Net Taxable Base:  Rs. {total_taxable:,.2f}")
 
-    # Push to Railway Cloud
+    # 1. Save Locally
+    local_file = os.path.join(DATA_DIR, "synced_sun_footprint.json")
+    with open(local_file, "w", encoding="utf-8") as f:
+        json.dump({
+            "project": company_name or "Sun Footprint",
+            "synced_at": datetime.now().isoformat(),
+            "source": f"Live Tally - {company_name}",
+            "count": len(vouchers),
+            "vouchers": vouchers
+        }, f, indent=2)
+
+    try:
+        from core.db import db
+        db.save_vouchers("010010", vouchers)
+    except Exception:
+        pass
+
+    # 2. Transmit to Railway Cloud
+    target_endpoint = f"{destination_url.rstrip('/')}/api/vouchers/sync"
+    print(f"\n[*] Transmitting payload to Railway Cloud: {target_endpoint}...")
+
     payload = {
-        "project": project_name,
+        "project": company_name or "Sun Footprint",
         "synced_at": datetime.now().isoformat(),
-        "source": "Local Windows PC Tally Agent",
+        "source": "1-Click Tally Sync Agent",
         "count": len(vouchers),
         "vouchers": vouchers
     }
 
     try:
-        url = f"{railway_url.rstrip('/')}/api/vouchers/sync"
-        print(f"[*] Transmitting data payload to: {url}...")
         req = urllib.request.Request(
-            url, 
-            data=json.dumps(payload).encode("utf-8"), 
+            target_endpoint,
+            data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             res = json.loads(resp.read().decode("utf-8"))
-            print("=" * 65)
-            print(f" [SUCCESS] {res.get('message')}")
-            print(f" Cloud Dashboard updated for project '{project_name}'!")
-            print(f" Open your Railway app: {railway_url}")
-            print("=" * 65)
+            print("=" * 75)
+            print(f"  [SUCCESS] {res.get('message', 'Cloud database synchronized!')}")
+            print(f"  Periods Synchronized: {res.get('periods', [])}")
+            print(f"  Live Dashboard: {destination_url}")
+            print("=" * 75)
             return True
     except Exception as e:
-        print(f"[X] Cloud sync failed: {e}")
+        print(f"[!] Warning: Cloud transmission failed ({e}). Data saved locally at {local_file}.")
         return False
 
 if __name__ == "__main__":
-    target = sys.argv[1] if len(sys.argv) > 1 else "https://sunbuilders-production.up.railway.app"
-    sync_to_railway(target)
+    target = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_RAILWAY_URL
+    sync(target)
