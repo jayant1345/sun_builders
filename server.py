@@ -2,6 +2,10 @@ import os
 import sys
 import json
 import re
+import threading
+import time
+import uuid
+import urllib.request
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
 
@@ -37,6 +41,16 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 app.jinja_env.auto_reload = True
+
+RAILWAY_CLOUD_URL = "https://sunbuilders-production.up.railway.app"
+
+# In-memory cloud<->local sync bridge state (single-instance app; no DB needed for this).
+# A browser on the cloud page queues a request here; the local agent (python server.py
+# running on the CA's PC, polling in the background) picks it up, extracts live Tally
+# data, and reports the result back - without the browser ever calling localhost directly.
+_sync_bridge_lock = threading.Lock()
+_pending_sync_request = None   # {"id": str, "requested_at": iso} or None
+_last_sync_result = None       # {"request_id": str, ...same shape as sync_live response...} or None
 
 def get_config():
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -175,22 +189,20 @@ def api_download(filename):
 
 
 
-@app.route("/api/tally/sync_live", methods=["POST", "OPTIONS"])
-def api_tally_sync_live():
+def _perform_live_tally_sync():
     """
-    Live voucher ingestion and synchronization endpoint.
-    Extracts complete historical dump from whichever company is open in Tally on Port 9000,
-    enforces 100% duplicate prevention, and returns rich voucher details.
+    Core live Tally extraction logic: resolves the active company, pulls the full
+    voucher dump, deduplicates, persists to DB, and (if running locally) pushes to
+    the cloud. Returns a plain dict (never raises) - shared by the direct
+    /api/tally/sync_live route and the local cloud-sync background agent below,
+    so both paths produce an identical response shape.
     """
-    if request.method == "OPTIONS":
-        return jsonify({"status": "ok"}), 200
-
     is_cloud = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_STATIC_URL") or os.environ.get("DYNO") or os.environ.get("RENDER") or (os.environ.get("PORT") and not os.path.exists(r"C:\Windows")))
     client = TallyClient()
     connected = client.is_connected()
 
     if not connected:
-        return jsonify({
+        return {
             "status": "offline",
             "connected": False,
             "is_cloud": is_cloud,
@@ -198,13 +210,13 @@ def api_tally_sync_live():
             "company": None,
             "count": 0,
             "vouchers": []
-        }), 200
+        }
 
     from tally_sync_agent import resolve_company_code, extract_from_live_tally
 
     companies = client.get_loaded_companies()
     if not companies:
-        return jsonify({
+        return {
             "status": "warning",
             "connected": True,
             "is_cloud": is_cloud,
@@ -212,7 +224,7 @@ def api_tally_sync_live():
             "company": None,
             "count": 0,
             "vouchers": []
-        }), 200
+        }
 
     active_company_name = companies[0]
     target_code, project_display = resolve_company_code(active_company_name)
@@ -257,8 +269,7 @@ def api_tally_sync_live():
     cloud_synced = False
     if not is_cloud:
         try:
-            import urllib.request
-            railway_endpoint = "https://sunbuilders-production.up.railway.app/api/vouchers/sync"
+            railway_endpoint = f"{RAILWAY_CLOUD_URL}/api/vouchers/sync"
             req_cloud = urllib.request.Request(
                 railway_endpoint,
                 data=json.dumps({
@@ -279,7 +290,7 @@ def api_tally_sync_live():
     total_deductions = sum(float(v.get("deductions", 0) or 0) for v in vouchers)
     total_taxable = sum(float(v.get("taxable_amount", 0) or 0) for v in vouchers)
 
-    return jsonify({
+    return {
         "status": "success",
         "connected": True,
         "is_cloud": is_cloud,
@@ -298,7 +309,95 @@ def api_tally_sync_live():
         "total_taxable": total_taxable,
         "vouchers": vouchers,
         "message": f"Full Tally Dump Synchronized from {active_company_name}: {len(vouchers)} vouchers loaded with 0 duplicates ({sync_res.get('inserted', 0)} new, {sync_res.get('unchanged', len(vouchers))} consistent)."
-    })
+    }
+
+@app.route("/api/tally/sync_live", methods=["POST", "OPTIONS"])
+def api_tally_sync_live():
+    """
+    Live voucher ingestion and synchronization endpoint.
+    Extracts complete historical dump from whichever company is open in Tally on Port 9000,
+    enforces 100% duplicate prevention, and returns rich voucher details.
+    """
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+    return jsonify(_perform_live_tally_sync())
+
+# --- Cloud <-> local sync bridge -------------------------------------------------
+# Lets the cloud dashboard trigger a real live Tally sync without the browser ever
+# calling localhost directly (which Chrome blocks from an HTTPS page). The browser
+# queues a request on the cloud; the local agent (started from __main__ below, only
+# when NOT running on Railway) polls for it, performs the sync, and reports back.
+
+@app.route("/api/tally/request_sync", methods=["POST"])
+def api_request_sync():
+    global _pending_sync_request, _last_sync_result
+    request_id = str(uuid.uuid4())
+    with _sync_bridge_lock:
+        _pending_sync_request = {"id": request_id, "requested_at": datetime.now().isoformat()}
+        _last_sync_result = None
+    return jsonify({"request_id": request_id, "status": "queued"})
+
+@app.route("/api/tally/poll_sync", methods=["GET"])
+def api_poll_sync():
+    """Called by the local agent to check whether the cloud has a sync request waiting."""
+    global _pending_sync_request
+    with _sync_bridge_lock:
+        if _pending_sync_request:
+            claimed = _pending_sync_request
+            _pending_sync_request = None
+            return jsonify({"pending": True, "request_id": claimed["id"]})
+    return jsonify({"pending": False})
+
+@app.route("/api/tally/submit_sync_result", methods=["POST"])
+def api_submit_sync_result():
+    """Called by the local agent once it has extracted live Tally data, to report the
+    result back for the cloud page to pick up."""
+    global _last_sync_result
+    data = request.get_json() or {}
+    with _sync_bridge_lock:
+        _last_sync_result = data
+    return jsonify({"status": "ok"})
+
+@app.route("/api/tally/sync_result/<request_id>", methods=["GET"])
+def api_sync_result(request_id):
+    """Called by the browser to poll for the result of a queued request."""
+    with _sync_bridge_lock:
+        if _last_sync_result and _last_sync_result.get("request_id") == request_id:
+            return jsonify({"status": "done", "result": _last_sync_result})
+    return jsonify({"status": "pending"})
+
+def _local_cloud_sync_agent():
+    """
+    Background loop (runs only on the local PC, never on Railway): polls the cloud
+    for queued sync requests from the dashboard, extracts live Tally data, pushes it
+    to the cloud DB, and reports the result back - so the cloud "Re-Sync" button
+    works without any manual .bat or script step, as long as this app is running.
+    """
+    print(f"[Local Cloud-Sync Agent] Watching {RAILWAY_CLOUD_URL} for sync requests...")
+    while True:
+        try:
+            req = urllib.request.Request(f"{RAILWAY_CLOUD_URL}/api/tally/poll_sync", method="GET")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                poll_data = json.loads(resp.read().decode("utf-8"))
+
+            if poll_data.get("pending"):
+                request_id = poll_data["request_id"]
+                print(f"[Local Cloud-Sync Agent] Cloud requested a sync (id={request_id}). Extracting from Tally...")
+                result = _perform_live_tally_sync()
+                result["request_id"] = request_id
+                try:
+                    submit_req = urllib.request.Request(
+                        f"{RAILWAY_CLOUD_URL}/api/tally/submit_sync_result",
+                        data=json.dumps(result).encode("utf-8"),
+                        headers={"Content-Type": "application/json"}
+                    )
+                    urllib.request.urlopen(submit_req, timeout=15)
+                    print(f"[Local Cloud-Sync Agent] Reported result ({result.get('status')}, {result.get('count', 0)} vouchers) back to cloud.")
+                except Exception as e:
+                    print(f"[Local Cloud-Sync Agent] Could not report result to cloud: {e}")
+        except Exception:
+            pass  # Cloud unreachable or no pending request; just retry next loop.
+        time.sleep(4)
 
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "project_master.json")
 
@@ -954,9 +1053,12 @@ def api_vouchers_purge_fake():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
+    is_cloud_env = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_STATIC_URL") or os.environ.get("DYNO") or os.environ.get("RENDER") or (os.environ.get("PORT") and not os.path.exists(r"C:\Windows")))
     print("=" * 65)
     print("  SUN BUILDERS REAL ESTATE GST AUTOMATION - FLASK SERVER")
     print(f"  Running at: http://localhost:{port}")
     print("=" * 65)
+    if not is_cloud_env:
+        threading.Thread(target=_local_cloud_sync_agent, daemon=True).start()
     app.run(host="0.0.0.0", port=port, debug=False)
 

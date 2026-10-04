@@ -801,21 +801,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             let data = null;
-            // If accessing from Railway Cloud, first attempt to probe local PC Tally bridge
+            // On Railway Cloud, the browser can't call a PC's localhost directly (Chrome
+            // blocks an HTTPS page silently calling plain HTTP localhost). Instead, queue
+            // the request on the cloud and let the local agent (python server.py running
+            // on the PC where Tally is open) pick it up and report back.
             if (window.location.hostname.includes('railway.app')) {
-                addModalLog("Railway Cloud session detected. Connecting to local PC Tally bridge (http://127.0.0.1:5050)...", "INFO");
+                addModalLog("Railway Cloud session detected. Queuing sync request for your local Tally agent...", "INFO");
                 try {
-                    const localResp = await fetch('http://127.0.0.1:5050/api/tally/sync_live', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        signal: AbortSignal.timeout(3000)
-                    });
-                    if (localResp.ok) {
-                        data = await localResp.json();
-                        addModalLog("Direct connection established to local PC Tally bridge (Port 5050 -> 9000)!", "SUCCESS");
+                    const reqResp = await fetch('/api/tally/request_sync', { method: 'POST' });
+                    const reqData = await reqResp.json();
+                    const requestId = reqData.request_id;
+                    addModalLog(`Request queued. Waiting for the Sun Builders app running on your PC to pick it up (make sure "python server.py" is running there)...`, "INFO");
+
+                    const maxAttempts = 150; // ~10 minutes at 4s intervals
+                    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                        await new Promise(r => setTimeout(r, 4000));
+                        const pollResp = await fetch(`/api/tally/sync_result/${requestId}`);
+                        const pollData = await pollResp.json();
+                        if (pollData.status === 'done') {
+                            data = pollData.result;
+                            addModalLog("Local agent responded with live Tally data!", "SUCCESS");
+                            break;
+                        }
+                    }
+                    if (!data) {
+                        data = {
+                            status: 'offline',
+                            connected: false,
+                            is_cloud: true,
+                            message: 'No response from your local Sun Builders app within 10 minutes. Make sure "python server.py" is running on the PC where Tally is open, and that PC has internet access.',
+                            company: null,
+                            count: 0,
+                            vouchers: []
+                        };
                     }
                 } catch (_e) {
-                    addModalLog("Local PC bridge http://127.0.0.1:5050 not reached from this browser tab. Querying server...", "INFO");
+                    addModalLog("Could not reach the cloud sync queue. Checking server directly...", "WARN");
                 }
             }
 
