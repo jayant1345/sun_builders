@@ -1075,13 +1075,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const btnExtractLiveTally = document.getElementById('btn-extract-live-tally');
-    if (btnExtractLiveTally) {
-        btnExtractLiveTally.addEventListener('click', async () => {
-            await executeTallyLiveSync(btnExtractLiveTally);
-        });
-    }
-
     // 10. BU Permission Date & Statutory Cutoff Modal Handlers
     const buModal = document.getElementById('bu-modal');
     const btnOpenBuModal = document.getElementById('btn-open-bu-modal');

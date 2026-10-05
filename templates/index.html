@@ -260,9 +260,9 @@
           <span>Last Synced: Just now</span>
         </div>
         <div class="flex items-center border-l border-outline-variant pl-3 gap-2">
-          <button class="btn-resync-ledger inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold shadow-xs transition-all duration-150" title="Extract & Sync Live Tally (Port 9000)">
+          <button class="btn-resync-ledger inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold shadow-xs transition-all duration-150" title="Sync Tally & Extract Vouchers (Live, Port 9000)">
             <span class="material-symbols-outlined text-[16px]">bolt</span>
-            <span>Sync Tally (9000)</span>
+            <span>⚡ Sync Tally &amp; Extract Vouchers (Live)</span>
           </button>
         </div>
 
@@ -444,10 +444,6 @@
           </div>
           
           <div class="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-end">
-            <button class="btn-resync-ledger px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-md shadow-emerald-600/20 cursor-pointer">
-              <span class="material-symbols-outlined text-[17px]">bolt</span>
-              <span>⚡ Extract &amp; Audit Tally Vouchers</span>
-            </button>
             <button class="btn-download-xlsx px-3.5 py-2 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs cursor-pointer">
               <span class="material-symbols-outlined text-[16px]">download</span>
               <span>Download .xlsx</span>
@@ -481,10 +477,6 @@
             </div>
             
             <div class="flex flex-wrap items-center gap-2.5">
-              <button id="btn-extract-live-tally" class="btn-resync-ledger px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] cursor-pointer">
-                <span class="material-symbols-outlined text-[18px]">bolt</span>
-                <span id="btn-sync-label-main">⚡ Extract &amp; Sync Live Tally (Port 9000)</span>
-              </button>
               <button class="btn-generate-gstr1 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-700 to-indigo-600 text-white font-bold text-xs flex items-center gap-1.5 hover:brightness-105 shadow-md shadow-blue-500/20">
                 <span class="material-symbols-outlined text-[16px]">bolt</span>
                 <span>Compile GSTR-1</span>
@@ -1754,7 +1746,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20261004_v11"></script>
+  <script src="/static/js/app.js?v=20261005_v12"></script>
   <script>
     // Immediate fallback: if user clicks before DOM fully ready
     if (!window.openBuModal) {
