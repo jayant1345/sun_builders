@@ -223,6 +223,18 @@ function ensureProjectInSelect(sel, code, label) {
 }
 
 let vouchersLoaded = false;
+let currentVoucherCategory = 'income';
+
+function updateVoucherCategoryButtons() {
+    document.querySelectorAll('.voucher-category-btn').forEach(btn => {
+        if (btn.getAttribute('data-category') === currentVoucherCategory) {
+            btn.className = 'voucher-category-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-blue-700 shadow-xs';
+        } else {
+            btn.className = 'voucher-category-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-500 hover:text-slate-800';
+        }
+    });
+}
+
 async function loadRealVouchers(projectKey, month, year) {
     try {
         const vSel = document.getElementById('select-voucher-project');
@@ -241,7 +253,8 @@ async function loadRealVouchers(projectKey, month, year) {
         if (mSel && month !== undefined && mSel.value !== targetMonth) mSel.value = targetMonth;
         if (ySel && year !== undefined && ySel.value !== targetYear) ySel.value = targetYear;
 
-        const resp = await fetch(`/api/vouchers?project=${encodeURIComponent(targetKey)}&month=${encodeURIComponent(targetMonth)}&year=${encodeURIComponent(targetYear)}`);
+        updateVoucherCategoryButtons();
+        const resp = await fetch(`/api/vouchers?project=${encodeURIComponent(targetKey)}&month=${encodeURIComponent(targetMonth)}&year=${encodeURIComponent(targetYear)}&category=${encodeURIComponent(currentVoucherCategory)}`);
         const data = await resp.json();
         if (data.status === 'success' && data.vouchers) {
             vouchersLoaded = true;
@@ -265,6 +278,10 @@ async function loadRealVouchers(projectKey, month, year) {
             if (periodBadge) {
                 periodBadge.textContent = `Period: ${data.period_display || 'ALL'}`;
             }
+            const incomeCountBadge = document.getElementById('voucher-category-income-count');
+            if (incomeCountBadge) {
+                incomeCountBadge.textContent = typeof data.income_count === 'number' ? `(${data.income_count})` : '';
+            }
 
             const tbody = document.getElementById('voucher-table-body');
             if (tbody) {
@@ -273,8 +290,8 @@ async function loadRealVouchers(projectKey, month, year) {
                     tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-on-surface-variant font-sans">
                         <div class="flex flex-col items-center justify-center gap-2">
                             <span class="material-symbols-outlined text-outline text-3xl">receipt_long</span>
-                            <span class="font-bold text-on-surface">No Collection Vouchers for ${data.project_name} (${data.company_code}) in Period ${data.period_display || 'Selected'}</span>
-                            <span class="text-xs text-on-surface-variant max-w-md">No transactions recorded for this selected month and year. Switch the filter to "All Months" or another period, or run Tally Sync.</span>
+                            <span class="font-bold text-on-surface">No ${currentVoucherCategory === 'income' ? 'Income (Flat/Shop Receipt)' : ''} Vouchers for ${data.project_name} (${data.company_code}) in Period ${data.period_display || 'Selected'}</span>
+                            <span class="text-xs text-on-surface-variant max-w-md">No transactions recorded for this selected month and year. Switch the filter to "All Months" or another period, ${currentVoucherCategory === 'income' ? 'toggle to "All Vouchers" to check purchase/expense entries, ' : ''}or run Tally Sync.</span>
                         </div>
                     </td></tr>`;
                 } else {
@@ -473,7 +490,20 @@ function updateOverviewCards(data) {
 document.addEventListener('DOMContentLoaded', () => {
     checkStatus();
     setInterval(checkStatus, 8000);
+    updateVoucherCategoryButtons();
     loadRealVouchers();
+
+    // Income / All Vouchers category toggle
+    document.querySelectorAll('.voucher-category-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const cat = btn.getAttribute('data-category');
+            if (cat === currentVoucherCategory) return;
+            currentVoucherCategory = cat;
+            updateVoucherCategoryButtons();
+            loadRealVouchers();
+            appendLog('INFO', `Switched voucher view to: ${cat === 'income' ? 'Income Vouchers (flat/shop payments)' : 'All Vouchers (incl. purchases)'}.`);
+        });
+    });
 
     // Setup Project Selector Dropdowns (Header & Voucher Tab)
     const vProjectSelect = document.getElementById('select-voucher-project');

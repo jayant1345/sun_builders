@@ -23,6 +23,33 @@ TEMPLATE_PATH = PRIMARY_TEMPLATE_PATH if os.path.exists(PRIMARY_TEMPLATE_PATH) e
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+EXPENSE_LEDGER_KEYWORDS = [
+    "purchase", "material", "electric", "electricity", "cable", "notary", "notarial",
+    "stamp duty", "stamp", "registration", "reg fee", "reg. fee", "maintenance exp",
+    "maintanance exp", "auda", "aec", "torrent", "vendor", "supplier", "contractor",
+    "consultant", "professional fee", "legal fee", "audit fee", "bank charges",
+    "courier", "printing", "stationery", "freight", "transport", "labour", "labor",
+    "cement", "steel", "sand", "bricks", "tiles", "plumbing", "sanitary", "paint",
+    "security services", "water charges", "diesel", "fuel", "repair", "maint ",
+]
+
+def classify_voucher_income(unit_str, party_str):
+    """Heuristically identifies whether a voucher is a genuine customer flat/shop
+    payment receipt (income) vs. a purchase/expense bill (vendor ledger), since
+    Tally's VOUCHERTYPENAME is not currently persisted per-voucher.
+    A real flat/unit code (e.g. 'E-1003', 'B-301') always contains a digit;
+    vendor/expense ledgers used as the flat placeholder (e.g. 'Electric') do not.
+    """
+    u = (unit_str or "").strip()
+    p = (party_str or "").strip().lower()
+    if not u or u in ("—", "-", "N/A", "Unit N/A"):
+        return False
+    if not re.search(r"\d", u):
+        return False
+    if any(kw in p for kw in EXPENSE_LEDGER_KEYWORDS):
+        return False
+    return True
+
 # Startup Database Seeding
 try:
     if os.path.exists(CONFIG_PATH):
@@ -871,6 +898,7 @@ def api_vouchers():
     project_query = request.args.get("project", "010010").strip()
     month_query = request.args.get("month", "ALL").strip().upper()
     year_query = request.args.get("year", "ALL").strip()
+    category_query = request.args.get("category", "income").strip().lower()
     
     # Resolve target project config
     if project_query in PROJECTS_METADATA:
@@ -906,21 +934,26 @@ def api_vouchers():
                 
                 amt = float(r.get("amount") or 0)
                 is_ex = bool(r.get("is_exempt"))
+                unit_val = r.get("unit_no") or r.get("block_no") or "—"
+                party_val = r.get("party_name", "")
+                is_income = classify_voucher_income(unit_val, r.get("party_original") or party_val)
                 all_vouchers.append({
                     "date": v_date,
                     "iso_date": v_date,
                     "vch_no": v_num,
-                    "unit": r.get("unit_no") or r.get("block_no") or "—",
-                    "flat_no": r.get("unit_no") or r.get("block_no") or "—",
-                    "name": r.get("party_name", ""),
-                    "member_name": r.get("party_name", ""),
+                    "unit": unit_val,
+                    "flat_no": unit_val,
+                    "name": party_val,
+                    "member_name": party_val,
                     "raw_name": r.get("party_original", ""),
                     "project": pcfg["name"],
                     "cr_amount": amt,
                     "deductions": 0.0,
                     "taxable_amount": 0.0 if is_ex else amt,
                     "classification": r.get("classification", ""),
-                    "badge_type": "exempt" if is_ex else ("taxable-1" if "1%" in str(r.get("gst_rate")) else "taxable-5")
+                    "badge_type": "exempt" if is_ex else ("taxable-1" if "1%" in str(r.get("gst_rate")) else "taxable-5"),
+                    "is_income": is_income,
+                    "type": "Member Receipt" if is_income else "Purchase / Expense"
                 })
     except Exception as e:
         print("[DB Fetch Notice]:", e)
@@ -970,6 +1003,11 @@ def api_vouchers():
             if vy != year_query:
                 continue
 
+        if category_query == "income" and not v.get("is_income"):
+            continue
+        if category_query == "expense" and v.get("is_income"):
+            continue
+
         filtered_vouchers.append(v)
 
     # Calculate metrics on filtered vouchers
@@ -986,6 +1024,9 @@ def api_vouchers():
     elif year_query != "ALL":
         period_display = f"YEAR: {year_query}"
 
+    income_count = sum(1 for v in all_vouchers if v.get("is_income"))
+    expense_count = len(all_vouchers) - income_count
+
     return jsonify({
         "status": "success",
         "project_key": target_key,
@@ -998,6 +1039,9 @@ def api_vouchers():
         "authority": pcfg.get("authority", ""),
         "selected_month": month_query,
         "selected_year": year_query,
+        "selected_category": category_query,
+        "income_count": income_count,
+        "expense_count": expense_count,
         "period_display": period_display,
         "available_periods": available_periods,
         "count": len(filtered_vouchers),
