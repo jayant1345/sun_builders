@@ -42,7 +42,7 @@ def parse_unit_and_names(ledger_name: str):
         return flat, name
     return "", ledger_name.strip()
 
-def extract_from_live_tally(tally_url="http://localhost:9000"):
+def extract_from_live_tally(tally_url="http://localhost:9000", target_company=None):
     import xml.etree.ElementTree as ET
     
     print("=" * 75)
@@ -50,30 +50,34 @@ def extract_from_live_tally(tally_url="http://localhost:9000"):
     print(f"  Tally API URL: {tally_url}")
     print("=" * 75)
 
-    # 1. Discover Active Company
-    comp_req = """<ENVELOPE>
-        <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Companies</ID></HEADER>
-        <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY>
-    </ENVELOPE>"""
+    if target_company:
+        active_company = target_company
+        print(f"[+] Targeting Loaded Company: '{active_company}'")
+    else:
+        # 1. Discover Active Company
+        comp_req = """<ENVELOPE>
+            <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Companies</ID></HEADER>
+            <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY>
+        </ENVELOPE>"""
 
-    try:
-        req = urllib.request.Request(tally_url, data=comp_req.encode('utf-8'), headers={'Content-Type': 'text/xml'})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            xml_res = clean_tally_xml(resp.read().decode('utf-8', errors='ignore'))
-            root = ET.fromstring(xml_res)
-            comps = [elem.text for elem in root.findall(".//COMPANYNAME") if elem.text]
-            if not comps:
-                comps = [elem.text for elem in root.findall(".//NAME") if elem.text and not elem.text.startswith("$$")]
-    except Exception as e:
-        print(f"[!] Could not connect to Tally on {tally_url}: {e}")
-        return None, []
+        try:
+            req = urllib.request.Request(tally_url, data=comp_req.encode('utf-8'), headers={'Content-Type': 'text/xml'})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                xml_res = clean_tally_xml(resp.read().decode('utf-8', errors='ignore'))
+                root = ET.fromstring(xml_res)
+                comps = [elem.text for elem in root.findall(".//COMPANYNAME") if elem.text]
+                if not comps:
+                    comps = [elem.text for elem in root.findall(".//NAME") if elem.text and not elem.text.startswith("$$")]
+        except Exception as e:
+            print(f"[!] Could not connect to Tally on {tally_url}: {e}")
+            return None, []
 
-    if not comps:
-        print("[!] Tally is online, but no Company is currently open. Please open your company in Tally.")
-        return None, []
+        if not comps:
+            print("[!] Tally is online, but no Company is currently open. Please open your company in Tally.")
+            return None, []
 
-    active_company = comps[0]
-    print(f"[+] Loaded Company identified: '{active_company}'")
+        active_company = comps[0]
+        print(f"[+] Loaded Company identified: '{active_company}'")
     print("[*] Extracting all historical vouchers via TDL Collection...")
 
     # 2. Query All Vouchers

@@ -189,7 +189,7 @@ def api_download(filename):
 
 
 
-def _perform_live_tally_sync():
+def _perform_live_tally_sync(target_project=None):
     """
     Core live Tally extraction logic: resolves the active company, pulls the full
     voucher dump, deduplicates, persists to DB, and (if running locally) pushes to
@@ -226,10 +226,19 @@ def _perform_live_tally_sync():
             "vouchers": []
         }
 
-    active_company_name = companies[0]
+    # Match target_project if requested, otherwise default to first loaded company
+    target_comp = companies[0]
+    if target_project:
+        for c in companies:
+            c_code, _ = resolve_company_code(c)
+            if c_code == target_project or str(target_project).lower() in c.lower():
+                target_comp = c
+                break
+
+    active_company_name = target_comp
     target_code, project_display = resolve_company_code(active_company_name)
 
-    comp_extracted, vouchers = extract_from_live_tally("http://localhost:9000")
+    comp_extracted, vouchers = extract_from_live_tally("http://localhost:9000", target_company=target_comp)
     if comp_extracted:
         active_company_name = comp_extracted
         target_code, project_display = resolve_company_code(active_company_name)
@@ -320,7 +329,9 @@ def api_tally_sync_live():
     """
     if request.method == "OPTIONS":
         return jsonify({"status": "ok"}), 200
-    return jsonify(_perform_live_tally_sync())
+    req_body = request.get_json(silent=True) or {}
+    target_project = req_body.get("project_code") or request.args.get("project_code")
+    return jsonify(_perform_live_tally_sync(target_project))
 
 # --- Cloud <-> local sync bridge -------------------------------------------------
 # Lets the cloud dashboard trigger a real live Tally sync without the browser ever
@@ -332,10 +343,16 @@ def api_tally_sync_live():
 def api_request_sync():
     global _pending_sync_request, _last_sync_result
     request_id = str(uuid.uuid4())
+    req_body = request.get_json(silent=True) or {}
+    target_project = req_body.get("project_code")
     with _sync_bridge_lock:
-        _pending_sync_request = {"id": request_id, "requested_at": datetime.now().isoformat()}
+        _pending_sync_request = {
+            "id": request_id,
+            "requested_at": datetime.now().isoformat(),
+            "target_project": target_project
+        }
         _last_sync_result = None
-    return jsonify({"request_id": request_id, "status": "queued"})
+    return jsonify({"request_id": request_id, "status": "queued", "target_project": target_project})
 
 @app.route("/api/tally/poll_sync", methods=["GET"])
 def api_poll_sync():
@@ -345,7 +362,11 @@ def api_poll_sync():
         if _pending_sync_request:
             claimed = _pending_sync_request
             _pending_sync_request = None
-            return jsonify({"pending": True, "request_id": claimed["id"]})
+            return jsonify({
+                "pending": True,
+                "request_id": claimed["id"],
+                "target_project": claimed.get("target_project")
+            })
     return jsonify({"pending": False})
 
 @app.route("/api/tally/submit_sync_result", methods=["POST"])

@@ -802,6 +802,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             let data = null;
+            const vProjSelect = document.getElementById('select-voucher-project');
+            const targetProjCode = (vProjSelect && vProjSelect.value && vProjSelect.value !== '010010') ? vProjSelect.value : null;
+
             // On Railway Cloud, the browser can't call a PC's localhost directly (Chrome
             // blocks an HTTPS page silently calling plain HTTP localhost). Instead, queue
             // the request on the cloud and let the local agent (python server.py running
@@ -809,10 +812,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.location.hostname.includes('railway.app')) {
                 addModalLog("Railway Cloud session detected. Queuing sync request for your local Tally agent...", "INFO");
                 try {
-                    const reqResp = await fetch('/api/tally/request_sync', { method: 'POST' });
+                    const reqResp = await fetch('/api/tally/request_sync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ project_code: targetProjCode })
+                    });
                     const reqData = await reqResp.json();
                     const requestId = reqData.request_id;
-                    addModalLog(`Request queued. Waiting for the Sun Builders app running on your PC to pick it up (make sure "python server.py" is running there)...`, "INFO");
+                    addModalLog(`Request queued. Waiting for your local Tally agent to pick it up (make sure "Start_Tally_Agent.bat" is running on the Tally PC)...`, "INFO");
 
                     const maxAttempts = 150; // ~10 minutes at 4s intervals
                     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -842,7 +849,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (!data) {
-                const resp = await fetch('/api/tally/sync_live', { method: 'POST' });
+                const resp = await fetch('/api/tally/sync_live', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_code: targetProjCode })
+                });
                 data = await resp.json();
             }
 
