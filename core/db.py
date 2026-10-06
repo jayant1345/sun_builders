@@ -131,6 +131,23 @@ class DatabaseManager:
                         );
                     """)
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_vch_project ON vouchers(project_code);")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS units (
+                            id SERIAL PRIMARY KEY,
+                            project_code VARCHAR(20) NOT NULL,
+                            unit_no VARCHAR(50) NOT NULL,
+                            block VARCHAR(20),
+                            flat_label VARCHAR(50),
+                            floor VARCHAR(20),
+                            usage_type VARCHAR(50),
+                            office_no VARCHAR(50),
+                            size_sqft NUMERIC(12, 2) DEFAULT 0,
+                            carpet_sqft NUMERIC(12, 2) DEFAULT 0,
+                            terrace_sqft NUMERIC(12, 2) DEFAULT 0,
+                            CONSTRAINT unq_unit UNIQUE (project_code, unit_no)
+                        );
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_unit_project ON units(project_code);")
                 else:
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS projects (
@@ -166,6 +183,23 @@ class DatabaseManager:
                         );
                     """)
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_vch_project ON vouchers(project_code);")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS units (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            project_code TEXT NOT NULL,
+                            unit_no TEXT NOT NULL,
+                            block TEXT,
+                            flat_label TEXT,
+                            floor TEXT,
+                            usage_type TEXT,
+                            office_no TEXT,
+                            size_sqft REAL DEFAULT 0,
+                            carpet_sqft REAL DEFAULT 0,
+                            terrace_sqft REAL DEFAULT 0,
+                            UNIQUE(project_code, unit_no)
+                        );
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_unit_project ON units(project_code);")
                 conn.commit()
                 print("[DatabaseManager] Schema verified successfully.")
         except Exception as e:
@@ -255,6 +289,66 @@ class DatabaseManager:
         except Exception as e:
             print(f"[DatabaseManager] Error upserting project {code}: {e}")
             return False
+
+    def save_units(self, project_code, units):
+        """Upsert the unit/flat inventory master (block, size, usage - no owner/payment
+        data) for a project. Sourced from the CA's unit-master Excel sheets, not Tally."""
+        if not units:
+            return 0
+        saved = 0
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                for u in units:
+                    unit_no = str(u.get("unit_no") or "").strip()
+                    if not unit_no:
+                        continue
+                    args = (
+                        project_code, unit_no, u.get("block", ""), u.get("flat_label", ""),
+                        u.get("floor", ""), u.get("usage_type", ""), u.get("office_no", ""),
+                        float(u.get("size_sqft") or 0), float(u.get("carpet_sqft") or 0),
+                        float(u.get("terrace_sqft") or 0)
+                    )
+                    if self.is_postgres:
+                        cur.execute("""
+                            INSERT INTO units (project_code, unit_no, block, flat_label, floor, usage_type, office_no, size_sqft, carpet_sqft, terrace_sqft)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (project_code, unit_no) DO UPDATE SET
+                                block = EXCLUDED.block, flat_label = EXCLUDED.flat_label, floor = EXCLUDED.floor,
+                                usage_type = EXCLUDED.usage_type, office_no = EXCLUDED.office_no,
+                                size_sqft = EXCLUDED.size_sqft, carpet_sqft = EXCLUDED.carpet_sqft, terrace_sqft = EXCLUDED.terrace_sqft;
+                        """, args)
+                    else:
+                        cur.execute("""
+                            INSERT INTO units (project_code, unit_no, block, flat_label, floor, usage_type, office_no, size_sqft, carpet_sqft, terrace_sqft)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (project_code, unit_no) DO UPDATE SET
+                                block = excluded.block, flat_label = excluded.flat_label, floor = excluded.floor,
+                                usage_type = excluded.usage_type, office_no = excluded.office_no,
+                                size_sqft = excluded.size_sqft, carpet_sqft = excluded.carpet_sqft, terrace_sqft = excluded.terrace_sqft;
+                        """, args)
+                    saved += 1
+                conn.commit()
+        except Exception as e:
+            print(f"[DatabaseManager] Error saving units for {project_code}: {e}")
+        return saved
+
+    def get_units(self, project_code):
+        """Fetch the unit inventory master for a project."""
+        units = []
+        try:
+            with self.get_connection() as conn:
+                if self.is_postgres:
+                    cur = conn.cursor(cursor_factory=RealDictCursor)
+                    cur.execute("SELECT * FROM units WHERE project_code = %s ORDER BY block ASC, unit_no ASC", (project_code,))
+                else:
+                    cur = conn.cursor()
+                    cur.execute("SELECT * FROM units WHERE project_code = ? ORDER BY block ASC, unit_no ASC", (project_code,))
+                for r in cur.fetchall():
+                    units.append(dict(r))
+        except Exception as e:
+            print(f"[DatabaseManager] Error fetching units for {project_code}: {e}")
+        return units
 
     def get_projects(self):
         projects = []

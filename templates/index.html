@@ -158,6 +158,10 @@
           <span class="material-symbols-outlined text-[18px]">domain</span>
           <span>Projects Ledger</span>
         </a>
+        <a class="nav-tab flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="units" href="#units">
+          <span class="material-symbols-outlined text-[18px]">apartment</span>
+          <span>Units &amp; Ownership</span>
+        </a>
         <a class="nav-tab flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="itc" href="#itc">
           <span class="material-symbols-outlined text-[18px]">account_balance</span>
           <span>ITC Reconciler</span>
@@ -1018,7 +1022,116 @@
         </section>
       </div>
 
+      <!-- ===================================================================== -->
+      <!-- TAB: UNITS & OWNERSHIP (block-wise / unit-wise payment & ownership)   -->
+      <!-- ===================================================================== -->
+      <div id="tab-units" class="tab-pane hidden flex flex-col gap-6">
+        <section class="glass-panel rounded-2xl overflow-hidden border border-slate-200 shadow-card bg-white flex flex-col">
+          <div class="px-6 py-4 bg-white border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs">
+                <span class="material-symbols-outlined text-[22px]">apartment</span>
+              </div>
+              <div>
+                <h2 class="font-display text-lg font-extrabold text-slate-900">Block-wise &amp; Unit-wise Ownership and Payment History</h2>
+                <p id="units-tab-subtitle" class="text-xs text-slate-500 font-medium">Unit inventory cross-referenced with synced Tally receipts</p>
+              </div>
+            </div>
+          </div>
 
+          <!-- Filters -->
+          <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 px-6 py-3 border-b border-slate-200 bg-slate-50/50">
+            <div class="flex flex-wrap items-center gap-2.5">
+              <div class="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2 shadow-xs">
+                <span class="material-symbols-outlined text-blue-700 text-[18px]">apartment</span>
+                <span class="text-xs font-bold text-slate-600">Project:</span>
+                <select id="select-units-project" class="bg-transparent border-0 p-0 text-xs font-bold text-blue-900 font-sans focus:ring-0 cursor-pointer">
+                  <option value="010000">🏢 Sun Atmosphere (010000)</option>
+                  <option value="010009">🏢 Sun Gravitas (010009)</option>
+                  <option value="010010">🏢 Sun Footprint (010010)</option>
+                  <option value="010011">🏢 Sun Park West (010011)</option>
+                  <option value="010002">🏢 Sun Silver Spring (010002)</option>
+                  <option value="010015">🏢 Lekhambha (010015)</option>
+                </select>
+              </div>
+
+              <div class="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 shadow-xs">
+                <span class="material-symbols-outlined text-indigo-600 text-[17px]">grid_view</span>
+                <span class="text-xs font-bold text-slate-600">Block:</span>
+                <select id="select-units-block" class="bg-transparent border-0 p-0 text-xs font-bold text-slate-800 font-sans focus:ring-0 cursor-pointer">
+                  <option value="ALL">All Blocks</option>
+                </select>
+              </div>
+
+              <div class="flex items-center bg-slate-100 border border-slate-200 rounded-xl p-1 shadow-xs">
+                <button type="button" data-status="ALL" class="units-status-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all">All</button>
+                <button type="button" data-status="paid" class="units-status-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all">Paid</button>
+                <button type="button" data-status="no_payments" class="units-status-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all">No Payments</button>
+              </div>
+
+              <div class="relative w-full sm:w-56">
+                <span class="material-symbols-outlined absolute left-2.5 top-2.5 text-slate-400 text-[16px]">search</span>
+                <input id="units-search-input" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl pl-8 pr-3 py-2 focus:border-blue-600 focus:bg-white shadow-xs font-medium" placeholder="Search unit, owner..." type="text"/>
+              </div>
+            </div>
+
+            <div id="units-summary-badge" class="text-xs text-slate-500 font-mono px-3 py-1 rounded-lg bg-blue-100 border border-blue-200 text-blue-800 font-bold">
+              Loading...
+            </div>
+          </div>
+
+          <div class="overflow-x-auto table-scrollbar rounded-xl max-h-[600px] overflow-y-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead class="sticky top-0 z-20 bg-slate-50 shadow-xs">
+                <tr class="bg-slate-50 text-slate-600 border-b border-slate-200 font-mono uppercase tracking-wider font-semibold">
+                  <th class="py-2.5 px-4">Unit No.</th>
+                  <th class="py-2.5 px-3">Block</th>
+                  <th class="py-2.5 px-3">Usage / Floor</th>
+                  <th class="py-2.5 px-3 text-right">Size (sqft)</th>
+                  <th class="py-2.5 px-4">Owner(s)</th>
+                  <th class="py-2.5 px-3 text-right">Total Paid (₹)</th>
+                  <th class="py-2.5 px-3 text-center">Payments</th>
+                  <th class="py-2.5 px-3">Last Payment</th>
+                  <th class="py-2.5 px-3 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody id="units-table-body" class="divide-y divide-slate-100 font-mono">
+                <!-- Dynamically rendered via loadUnits() -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- Unit History Drill-down Modal -->
+      <div id="unit-history-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+          <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+            <div>
+              <h3 id="unit-history-title" class="font-display text-base font-extrabold text-slate-900">Unit History</h3>
+              <p id="unit-history-subtitle" class="text-xs text-slate-500 font-medium mt-0.5">Full payment & ownership history</p>
+            </div>
+            <button id="btn-close-unit-history" type="button" class="p-2 rounded-xl hover:bg-slate-200 text-slate-500 transition-colors">
+              <span class="material-symbols-outlined text-[20px]">close</span>
+            </button>
+          </div>
+          <div id="unit-history-owners" class="px-5 py-3 border-b border-slate-100 flex flex-wrap gap-1.5"></div>
+          <div class="overflow-y-auto table-scrollbar flex-1 p-5">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="text-slate-500 border-b border-slate-200 font-mono uppercase tracking-wider font-semibold">
+                  <th class="py-2 px-2">Date</th>
+                  <th class="py-2 px-2">Vch No</th>
+                  <th class="py-2 px-2">Owner</th>
+                  <th class="py-2 px-2 text-right">Amount (₹)</th>
+                  <th class="py-2 px-2">Classification</th>
+                </tr>
+              </thead>
+              <tbody id="unit-history-table-body" class="divide-y divide-slate-100 font-mono"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
 
       <!-- ===================================================================== -->
       <!-- TAB 4: ITC RECONCILER                                                 -->

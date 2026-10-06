@@ -199,6 +199,11 @@ function switchTab(tabId) {
     const vSel = document.getElementById('select-voucher-project');
     loadRealVouchers(vSel ? vSel.value : '010010');
 
+    if (tabId === 'units') {
+        const uSel = document.getElementById('select-units-project');
+        loadUnits(uSel ? uSel.value : '010000');
+    }
+
     // Scroll to top of main content unless targeted
     if (window.location.hash !== '#voucher-hub-section' && window.location.hash !== '#vouchers') {
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -484,6 +489,158 @@ function updateOverviewCards(data) {
         if (targetRow) {
             targetRow.classList.add('bg-primary/10', 'border-l-4', 'border-l-secondary');
         }
+    }
+}
+
+let currentUnitsData = [];
+let currentUnitsFilters = { block: 'ALL', status: 'ALL', search: '' };
+
+async function loadUnits(projectKey) {
+    const pSel = document.getElementById('select-units-project');
+    const targetKey = projectKey || (pSel ? pSel.value : '010000');
+    if (pSel && pSel.value !== targetKey) pSel.value = targetKey;
+
+    const tbody = document.getElementById('units-table-body');
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-slate-400 font-sans">Loading units...</td></tr>`;
+    }
+
+    try {
+        const resp = await fetch(`/api/units?project=${encodeURIComponent(targetKey)}&block=ALL`);
+        const data = await resp.json();
+        if (data.status !== 'success') return;
+
+        currentUnitsData = data.units || [];
+        currentUnitsFilters.block = 'ALL';
+
+        const blockSel = document.getElementById('select-units-block');
+        if (blockSel) {
+            blockSel.innerHTML = '<option value="ALL">All Blocks</option>' +
+                (data.blocks || []).map(b => `<option value="${b}">Block ${b}</option>`).join('');
+        }
+
+        const subtitle = document.getElementById('units-tab-subtitle');
+        if (subtitle) subtitle.textContent = `${data.project_name} — ${data.count} units in master inventory (block/size from CA unit list, payments from synced Tally vouchers)`;
+
+        renderUnitsTable();
+    } catch (err) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-red-500 font-sans">Failed to load units: ${err.message}</td></tr>`;
+    }
+}
+
+function renderUnitsTable() {
+    const tbody = document.getElementById('units-table-body');
+    if (!tbody) return;
+
+    let rows = currentUnitsData;
+    if (currentUnitsFilters.block !== 'ALL') {
+        rows = rows.filter(u => u.block === currentUnitsFilters.block);
+    }
+    if (currentUnitsFilters.status !== 'ALL') {
+        rows = rows.filter(u => u.status === currentUnitsFilters.status);
+    }
+    if (currentUnitsFilters.search) {
+        const q = currentUnitsFilters.search.toLowerCase();
+        rows = rows.filter(u =>
+            (u.unit_no || '').toLowerCase().includes(q) ||
+            (u.owners || []).join(' ').toLowerCase().includes(q)
+        );
+    }
+
+    const summaryBadge = document.getElementById('units-summary-badge');
+    if (summaryBadge) {
+        const paidCount = currentUnitsData.filter(u => u.status === 'paid').length;
+        summaryBadge.textContent = `Showing ${rows.length} of ${currentUnitsData.length} units (${paidCount} with payment history)`;
+    }
+
+    if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-slate-400 font-sans">
+            <div class="flex flex-col items-center justify-center gap-1.5">
+                <span class="material-symbols-outlined text-[28px] text-slate-300">apartment</span>
+                <span class="font-bold text-slate-600">No units match the current filters</span>
+            </div>
+        </td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = '';
+    const projectKey = document.getElementById('select-units-project')?.value || '010000';
+    rows.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-blue-50/40 transition-colors cursor-pointer';
+        tr.addEventListener('click', () => openUnitHistory(projectKey, u.unit_no));
+
+        const ownersText = (u.owners && u.owners.length) ? u.owners.join(', ') : '—';
+        const statusBadge = u.status === 'paid'
+            ? `<span class="px-2 py-0.5 rounded text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">Paid</span>`
+            : `<span class="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-500 border border-slate-200 font-medium">No Payments</span>`;
+        const formattedPaid = Number(u.total_paid || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        const usageFloor = [u.usage_type, u.floor].filter(Boolean).join(' / ') || '—';
+
+        tr.innerHTML = `
+            <td class="py-2.5 px-4 font-mono font-bold text-secondary bg-secondary/10 px-2 py-0.5 rounded border border-secondary/20 inline-block my-1.5">${u.unit_no}</td>
+            <td class="py-2.5 px-3 text-on-surface-variant font-sans">${u.block || '—'}</td>
+            <td class="py-2.5 px-3 text-on-surface-variant font-sans">${usageFloor}</td>
+            <td class="py-2.5 px-3 text-right text-on-surface font-mono">${Number(u.size_sqft || 0).toLocaleString('en-IN')}</td>
+            <td class="py-2.5 px-4 font-sans text-on-surface font-medium">${ownersText}</td>
+            <td class="py-2.5 px-3 text-right text-on-surface font-semibold font-mono">${u.total_paid ? '₹' + formattedPaid : '—'}</td>
+            <td class="py-2.5 px-3 text-center text-on-surface font-mono">${u.payment_count}</td>
+            <td class="py-2.5 px-3 text-on-surface-variant font-sans">${u.last_payment_date || '—'}</td>
+            <td class="py-2.5 px-3 text-center">${statusBadge}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function openUnitHistory(projectKey, unitNo) {
+    const modal = document.getElementById('unit-history-modal');
+    const title = document.getElementById('unit-history-title');
+    const subtitle = document.getElementById('unit-history-subtitle');
+    const ownersBox = document.getElementById('unit-history-owners');
+    const tbody = document.getElementById('unit-history-table-body');
+
+    if (title) title.textContent = `Unit ${unitNo}`;
+    if (subtitle) subtitle.textContent = 'Loading history...';
+    if (ownersBox) ownersBox.innerHTML = '';
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400">Loading...</td></tr>`;
+    if (modal) modal.classList.remove('hidden');
+
+    try {
+        const resp = await fetch(`/api/units/history?project=${encodeURIComponent(projectKey)}&unit=${encodeURIComponent(unitNo)}`);
+        const data = await resp.json();
+        if (data.status !== 'success') return;
+
+        if (subtitle) {
+            const totalFmt = Number(data.total_paid || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+            subtitle.textContent = `${data.payment_count} payment(s) · ₹${totalFmt} total`;
+        }
+
+        if (ownersBox) {
+            ownersBox.innerHTML = (data.owners && data.owners.length)
+                ? data.owners.map(o => `<span class="px-2.5 py-1 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200 font-semibold">${o}</span>`).join('')
+                : `<span class="text-xs text-slate-400 font-sans">No ownership records found for this unit yet.</span>`;
+        }
+
+        if (tbody) {
+            if (!data.history || data.history.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400 font-sans">No payments recorded for this unit yet.</td></tr>`;
+            } else {
+                tbody.innerHTML = data.history.map(h => {
+                    const amtFmt = Number(h.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+                    return `
+                        <tr>
+                            <td class="py-2 px-2 text-on-surface">${h.date || '—'}</td>
+                            <td class="py-2 px-2 text-primary font-semibold">${h.vch_no || '—'}</td>
+                            <td class="py-2 px-2 font-sans text-on-surface">${h.party_name || '—'}</td>
+                            <td class="py-2 px-2 text-right text-on-surface font-semibold">₹${amtFmt}</td>
+                            <td class="py-2 px-2 font-sans text-xs text-on-surface-variant">${h.classification || '—'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+    } catch (err) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-red-500">Failed to load history: ${err.message}</td></tr>`;
     }
 }
 
@@ -1317,5 +1474,53 @@ document.addEventListener('DOMContentLoaded', () => {
             openBuModal(code);
         });
     });
+
+    // Units & Ownership tab wiring
+    const unitsProjectSelect = document.getElementById('select-units-project');
+    if (unitsProjectSelect) {
+        unitsProjectSelect.addEventListener('change', (e) => loadUnits(e.target.value));
+    }
+    const unitsBlockSelect = document.getElementById('select-units-block');
+    if (unitsBlockSelect) {
+        unitsBlockSelect.addEventListener('change', (e) => {
+            currentUnitsFilters.block = e.target.value;
+            renderUnitsTable();
+        });
+    }
+    document.querySelectorAll('.units-status-btn').forEach(btn => {
+        if (btn.getAttribute('data-status') === 'ALL') {
+            btn.className = 'units-status-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-blue-700 shadow-xs';
+        } else {
+            btn.className = 'units-status-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-500 hover:text-slate-800';
+        }
+        btn.addEventListener('click', () => {
+            currentUnitsFilters.status = btn.getAttribute('data-status');
+            document.querySelectorAll('.units-status-btn').forEach(b => {
+                b.className = b === btn
+                    ? 'units-status-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-blue-700 shadow-xs'
+                    : 'units-status-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-500 hover:text-slate-800';
+            });
+            renderUnitsTable();
+        });
+    });
+    const unitsSearchInput = document.getElementById('units-search-input');
+    if (unitsSearchInput) {
+        unitsSearchInput.addEventListener('input', (e) => {
+            currentUnitsFilters.search = e.target.value;
+            renderUnitsTable();
+        });
+    }
+    const btnCloseUnitHistory = document.getElementById('btn-close-unit-history');
+    if (btnCloseUnitHistory) {
+        btnCloseUnitHistory.addEventListener('click', () => {
+            document.getElementById('unit-history-modal')?.classList.add('hidden');
+        });
+    }
+    const unitHistoryModal = document.getElementById('unit-history-modal');
+    if (unitHistoryModal) {
+        unitHistoryModal.addEventListener('click', (e) => {
+            if (e.target === unitHistoryModal) unitHistoryModal.classList.add('hidden');
+        });
+    }
 });
 

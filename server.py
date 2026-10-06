@@ -62,6 +62,16 @@ try:
             if isinstance(v_list, list) and v_list:
                 db.save_vouchers("010010", v_list)
     db.fix_flat_name_parsing()
+
+    for _umf in os.listdir(os.path.join(BASE_DIR, "data")) if os.path.isdir(os.path.join(BASE_DIR, "data")) else []:
+        if _umf.startswith("unit_master_") and _umf.endswith(".json"):
+            _um_path = os.path.join(BASE_DIR, "data", _umf)
+            with open(_um_path, "r", encoding="utf-8") as f:
+                _um_payload = json.load(f)
+            _um_code = _um_payload.get("company_code") or _umf[len("unit_master_"):-len(".json")]
+            _um_units = _um_payload.get("units") or []
+            if _um_units:
+                db.save_units(_um_code, _um_units)
 except Exception as _e:
     print(f"[DB Startup Seed] Notice: {_e}")
 
@@ -1054,6 +1064,125 @@ def api_vouchers():
             {"code": v["code"], "name": v["name"], "rate": v["rate"]} for k, v in PROJECTS_METADATA.items() if k == v["code"]
         ],
         "vouchers": filtered_vouchers
+    })
+
+@app.route("/api/units", methods=["GET"])
+def api_units():
+    """Block-wise / unit-wise inventory for a project, each unit enriched with its
+    payment history and ownership history derived from the already-synced Tally
+    vouchers (matched by unit code). The unit master itself (block/size/usage)
+    comes from the CA's Excel sheets, not Tally - it has no owner/payment data."""
+    PROJECTS_METADATA = get_projects_metadata()
+    project_query = request.args.get("project", "010010").strip()
+    block_query = request.args.get("block", "ALL").strip().upper()
+
+    pcfg = PROJECTS_METADATA.get(project_query)
+    if not pcfg:
+        for k, pinfo in PROJECTS_METADATA.items():
+            if k in project_query or pinfo["name"].lower() in project_query.lower() or project_query.lower() in pinfo["name"].lower():
+                pcfg = pinfo
+                break
+    target_key = pcfg["code"] if pcfg else project_query
+    project_name = pcfg["name"] if pcfg else project_query
+
+    unit_rows = db.get_units(target_key)
+    voucher_rows = db.get_vouchers(target_key)
+
+    vch_by_unit = {}
+    for r in voucher_rows:
+        u = str(r.get("unit_no") or "").strip().upper()
+        if not u:
+            continue
+        vch_by_unit.setdefault(u, []).append(r)
+
+    units_out = []
+    blocks_seen = set()
+    for u in unit_rows:
+        unit_no = u.get("unit_no") or ""
+        block = u.get("block") or ""
+        if block:
+            blocks_seen.add(block)
+        if block_query != "ALL" and block != block_query:
+            continue
+
+        matched = vch_by_unit.get(unit_no.upper(), [])
+        total_paid = sum(float(v.get("amount") or 0) for v in matched)
+        dates = sorted([v.get("date") or "" for v in matched if v.get("date")])
+        owners = []
+        seen_owner = set()
+        for v in sorted(matched, key=lambda x: x.get("date") or ""):
+            name = (v.get("party_name") or "").strip()
+            if name and name not in seen_owner:
+                seen_owner.add(name)
+                owners.append(name)
+
+        units_out.append({
+            "unit_no": unit_no,
+            "block": block,
+            "flat_label": u.get("flat_label") or "",
+            "floor": u.get("floor") or "",
+            "usage_type": u.get("usage_type") or "",
+            "office_no": u.get("office_no") or "",
+            "size_sqft": float(u.get("size_sqft") or 0),
+            "carpet_sqft": float(u.get("carpet_sqft") or 0),
+            "terrace_sqft": float(u.get("terrace_sqft") or 0),
+            "total_paid": total_paid,
+            "payment_count": len(matched),
+            "first_payment_date": dates[0] if dates else None,
+            "last_payment_date": dates[-1] if dates else None,
+            "owners": owners,
+            "status": "paid" if matched else "no_payments"
+        })
+
+    return jsonify({
+        "status": "success",
+        "project_key": target_key,
+        "project_name": project_name,
+        "blocks": sorted(blocks_seen),
+        "selected_block": block_query,
+        "count": len(units_out),
+        "units": units_out
+    })
+
+@app.route("/api/units/history", methods=["GET"])
+def api_unit_history():
+    """Full payment history (voucher list) and ownership history for one unit."""
+    PROJECTS_METADATA = get_projects_metadata()
+    project_query = request.args.get("project", "010010").strip()
+    unit_query = request.args.get("unit", "").strip().upper()
+
+    pcfg = PROJECTS_METADATA.get(project_query)
+    target_key = pcfg["code"] if pcfg else project_query
+
+    voucher_rows = db.get_vouchers(target_key)
+    matched = [r for r in voucher_rows if str(r.get("unit_no") or "").strip().upper() == unit_query]
+    matched.sort(key=lambda x: x.get("date") or "")
+
+    history = []
+    owners = []
+    seen_owner = set()
+    for v in matched:
+        name = (v.get("party_name") or "").strip()
+        if name and name not in seen_owner:
+            seen_owner.add(name)
+            owners.append(name)
+        history.append({
+            "date": v.get("date"),
+            "vch_no": v.get("voucher_number"),
+            "party_name": v.get("party_name"),
+            "amount": float(v.get("amount") or 0),
+            "classification": v.get("classification"),
+            "is_exempt": bool(v.get("is_exempt"))
+        })
+
+    return jsonify({
+        "status": "success",
+        "project_key": target_key,
+        "unit_no": unit_query,
+        "owners": owners,
+        "payment_count": len(history),
+        "total_paid": sum(h["amount"] for h in history),
+        "history": history
     })
 
 @app.route("/api/vouchers/sync", methods=["POST"])
