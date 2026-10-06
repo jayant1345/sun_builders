@@ -1,8 +1,44 @@
 import os
+import re
 import json
 import sqlite3
 from datetime import datetime
 from urllib.parse import urlparse
+
+
+def _parse_unit_and_name(raw_text):
+    """Splits a raw Tally ledger name into (flat/unit code, owner name(s)).
+    Stops the flat-code capture right after the unit digits, so a ledger like
+    'I-803-Neetaben Trivedi - After BU' (multiple owners glued with a hyphen,
+    no comma) correctly yields unit='I-803' and name='Neetaben Trivedi - After BU'
+    instead of swallowing the first owner's name into the flat code.
+    """
+    if not raw_text:
+        return "", ""
+    raw = str(raw_text).replace('_x000D_\n', ' ').replace('_x000D_', ' ').strip()
+
+    m = re.match(r'^([A-Za-z]{1,4})\s*[\-_/,\s]\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
+    if m:
+        unit = f"{m.group(1).upper()}-{m.group(2)}"
+        rest_name = re.sub(r'^[,;.:\-\s]+', '', m.group(3).strip()).strip()
+        rest_name = re.sub(r'\s+', ' ', rest_name)
+        return unit, rest_name
+
+    m2 = re.match(r'^([A-Za-z]{1,4})(\d{2,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
+    if m2:
+        unit = f"{m2.group(1).upper()}-{m2.group(2)}"
+        rest_name = re.sub(r'^[,;.:\-\s]+', '', m2.group(3).strip()).strip()
+        rest_name = re.sub(r'\s+', ' ', rest_name)
+        return unit, rest_name
+
+    for sep in [',', ';', '-']:
+        if sep in raw:
+            p0, p1 = raw.split(sep, 1)
+            p0, p1 = p0.strip(), p1.strip()
+            if len(p0) <= 8 and any(ch.isdigit() for ch in p0):
+                return p0, p1
+
+    return "", raw
 
 # Optional psycopg2 import
 try:
@@ -418,6 +454,50 @@ class DatabaseManager:
         except Exception as e:
             print(f"[DatabaseManager] Error fetching vouchers for {project_code}: {e}")
         return vouchers
+
+    def fix_flat_name_parsing(self):
+        """
+        One-time, idempotent correction: re-derives unit_no/block_no/party_name from
+        the original unparsed ledger text (party_original) using the corrected
+        flat-code parser. Fixes historical rows where a hyphen-glued owner name
+        (e.g. 'I-803-Neetaben Trivedi') was mis-split, swallowing the first owner's
+        name into the flat code instead of the account name. Never deletes rows;
+        only corrects unit_no/block_no/party_name when the re-derived split differs.
+        Safe to run on every startup - rows already correctly split are left as-is.
+        """
+        fixed = 0
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id, party_original, unit_no, block_no, party_name FROM vouchers WHERE party_original IS NOT NULL AND party_original != ''")
+                rows = cur.fetchall()
+
+                for r in rows:
+                    rid, orig, old_unit, old_block, old_party = r[0], r[1], r[2], r[3], r[4]
+                    new_unit, new_name = _parse_unit_and_name(orig)
+                    if not new_unit or not new_name:
+                        continue
+                    if new_unit == (old_unit or "") and new_name == (old_party or ""):
+                        continue
+
+                    if self.is_postgres:
+                        cur.execute(
+                            "UPDATE vouchers SET unit_no = %s, party_name = %s WHERE id = %s",
+                            (new_unit, new_name, rid)
+                        )
+                    else:
+                        cur.execute(
+                            "UPDATE vouchers SET unit_no = ?, party_name = ? WHERE id = ?",
+                            (new_unit, new_name, rid)
+                        )
+                    fixed += 1
+
+                conn.commit()
+                if fixed:
+                    print(f"[DatabaseManager] fix_flat_name_parsing: corrected {fixed} voucher flat/name split(s).")
+        except Exception as e:
+            print(f"[DatabaseManager] Error in fix_flat_name_parsing: {e}")
+        return fixed
 
     def count_vouchers_per_project(self):
         counts = {}

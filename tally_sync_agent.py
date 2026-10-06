@@ -33,14 +33,41 @@ def clean_tally_xml(xml_str: str) -> str:
     return s
 
 def parse_unit_and_names(ledger_name: str):
+    """Splits a Tally ledger name into (flat/unit code, owner name(s)).
+    Stops the flat-code capture right after the unit digits, so a ledger like
+    'I-803-Neetaben Trivedi - After BU' (multiple owners glued with a hyphen,
+    no comma) correctly yields flat='I-803' and name='Neetaben Trivedi - After BU'
+    instead of swallowing the first owner's name into the flat code.
+    """
     if not ledger_name:
         return "", ""
-    m = re.match(r"^([A-Za-z0-9\/\-\.]+)(?:,|\s\-\s|\s-\s|\s-\s*|;|\s)(.*)$", ledger_name.strip())
+    raw = ledger_name.replace('_x000D_\n', ' ').replace('_x000D_', ' ').strip()
+
+    # Pattern A: Block + flat with a separator (-, /, space, comma) between them
+    m = re.match(r'^([A-Za-z]{1,4})\s*[\-_/,\s]\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
     if m:
-        flat = m.group(1).strip()
-        name = m.group(2).strip()
-        return flat, name
-    return "", ledger_name.strip()
+        unit = f"{m.group(1).upper()}-{m.group(2)}"
+        rest_name = re.sub(r'^[,;.:\-\s]+', '', m.group(3).strip()).strip()
+        rest_name = re.sub(r'\s+', ' ', rest_name)
+        return unit, rest_name
+
+    # Pattern B: Block and digits glued with no separator, e.g. 'L1102,Sudhanshu Agarwal'
+    m2 = re.match(r'^([A-Za-z]{1,4})(\d{2,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
+    if m2:
+        unit = f"{m2.group(1).upper()}-{m2.group(2)}"
+        rest_name = re.sub(r'^[,;.:\-\s]+', '', m2.group(3).strip()).strip()
+        rest_name = re.sub(r'\s+', ' ', rest_name)
+        return unit, rest_name
+
+    # Pattern C: Fallback split on first comma / semicolon / dash if the first chunk looks like a code
+    for sep in [',', ';', '-']:
+        if sep in raw:
+            p0, p1 = raw.split(sep, 1)
+            p0, p1 = p0.strip(), p1.strip()
+            if len(p0) <= 8 and any(ch.isdigit() for ch in p0):
+                return p0, p1
+
+    return "", raw
 
 def extract_from_live_tally(tally_url="http://localhost:9000", target_company=None):
     import xml.etree.ElementTree as ET

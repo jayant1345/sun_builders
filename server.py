@@ -61,6 +61,7 @@ try:
             v_list = synced_payload.get("vouchers") if isinstance(synced_payload, dict) else synced_payload
             if isinstance(v_list, list) and v_list:
                 db.save_vouchers("010010", v_list)
+    db.fix_flat_name_parsing()
 except Exception as _e:
     print(f"[DB Startup Seed] Notice: {_e}")
 
