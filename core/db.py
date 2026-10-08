@@ -569,20 +569,29 @@ class DatabaseManager:
                 for r in rows:
                     rid, orig, old_unit, old_block, old_party = r[0], r[1], r[2], r[3], r[4]
                     new_unit, new_name = _parse_unit_and_name(orig)
-                    if not new_unit or not new_name:
-                        continue
-                    if new_unit == (old_unit or "") and new_name == (old_party or ""):
+                    old_unit_s = (old_unit or "").strip()
+
+                    if new_unit and new_name:
+                        if new_unit == old_unit_s and new_name == (old_party or ""):
+                            continue
+                        final_unit, final_name = new_unit, new_name
+                    elif not new_unit and old_unit_s and not any(ch.isdigit() for ch in old_unit_s):
+                        # Old parser left a bogus non-digit fragment (e.g. 'AXIS', 'ICICI')
+                        # as the flat code for a vendor/bank ledger that has no real unit.
+                        # A real flat code always contains a digit, so this is unambiguous.
+                        final_unit, final_name = "", str(orig).strip()
+                    else:
                         continue
 
                     if self.is_postgres:
                         cur.execute(
                             "UPDATE vouchers SET unit_no = %s, party_name = %s WHERE id = %s",
-                            (new_unit, new_name, rid)
+                            (final_unit, final_name, rid)
                         )
                     else:
                         cur.execute(
                             "UPDATE vouchers SET unit_no = ?, party_name = ? WHERE id = ?",
-                            (new_unit, new_name, rid)
+                            (final_unit, final_name, rid)
                         )
                     fixed += 1
 

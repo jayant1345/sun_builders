@@ -597,12 +597,14 @@ async function openUnitHistory(projectKey, unitNo) {
     const title = document.getElementById('unit-history-title');
     const subtitle = document.getElementById('unit-history-subtitle');
     const ownersBox = document.getElementById('unit-history-owners');
-    const tbody = document.getElementById('unit-history-table-body');
+    const notesBox = document.getElementById('unit-history-transfer-notes');
+    const timeline = document.getElementById('unit-history-timeline');
 
     if (title) title.textContent = `Unit ${unitNo}`;
     if (subtitle) subtitle.textContent = 'Loading history...';
     if (ownersBox) ownersBox.innerHTML = '';
-    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400">Loading...</td></tr>`;
+    if (notesBox) notesBox.innerHTML = '';
+    if (timeline) timeline.innerHTML = `<div class="text-center py-6 text-slate-400 font-sans text-xs">Loading...</div>`;
     if (modal) modal.classList.remove('hidden');
 
     try {
@@ -612,35 +614,133 @@ async function openUnitHistory(projectKey, unitNo) {
 
         if (subtitle) {
             const totalFmt = Number(data.total_paid || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-            subtitle.textContent = `${data.payment_count} payment(s) · ₹${totalFmt} total`;
+            const ownerCount = (data.owners || []).length;
+            subtitle.textContent = `${data.payment_count} payment(s) · ₹${totalFmt} total · ${ownerCount} owner${ownerCount === 1 ? '' : 's'} on record`;
         }
 
         if (ownersBox) {
             ownersBox.innerHTML = (data.owners && data.owners.length)
-                ? data.owners.map(o => `<span class="px-2.5 py-1 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200 font-semibold">${o}</span>`).join('')
+                ? data.owners.map((o, i) => `<span class="px-2.5 py-1 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200 font-semibold">${i + 1}. ${o}</span>`).join('')
                 : `<span class="text-xs text-slate-400 font-sans">No ownership records found for this unit yet.</span>`;
         }
 
-        if (tbody) {
-            if (!data.history || data.history.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400 font-sans">No payments recorded for this unit yet.</td></tr>`;
+        if (notesBox) {
+            let boxesHtml = '';
+
+            if (data.cancelled_bookings && data.cancelled_bookings.length) {
+                const cancelledTotalFmt = Number(data.cancelled_total || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+                boxesHtml += `
+                    <div class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 mb-2">
+                        <div class="flex items-center gap-1.5 text-red-800 text-xs font-bold mb-1.5">
+                            <span class="material-symbols-outlined text-[16px]">cancel</span>
+                            Cancelled / voided booking(s) — excluded from ownership timeline and totals (₹${cancelledTotalFmt})
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            ${data.cancelled_bookings.map(b => `
+                                <div class="text-xs text-red-900 font-sans">
+                                    <span class="font-mono font-semibold line-through">${b.party_name || '—'}</span> ·
+                                    <span class="font-mono">${b.date || '—'}</span> ·
+                                    <span class="font-mono">${b.vch_no || '—'}</span> ·
+                                    ₹${Number(b.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (data.transfer_notes && data.transfer_notes.length) {
+                boxesHtml += `
+                    <div class="rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5">
+                        <div class="flex items-center gap-1.5 text-amber-800 text-xs font-bold mb-1.5">
+                            <span class="material-symbols-outlined text-[16px]">info</span>
+                            Possible transfer / NOC-related entries found in voucher narration
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            ${data.transfer_notes.map(n => `
+                                <div class="text-xs text-amber-900 font-sans">
+                                    <span class="font-mono font-semibold">${n.date || '—'}</span> ·
+                                    <span class="font-mono">${n.vch_no || '—'}</span> ·
+                                    ₹${Number(n.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} —
+                                    <span class="italic">${n.narration || ''}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            notesBox.innerHTML = boxesHtml;
+        }
+
+        if (timeline) {
+            const periods = data.ownership_periods || [];
+            if (periods.length === 0) {
+                timeline.innerHTML = `<div class="text-center py-8 text-slate-400 font-sans">
+                    <div class="flex flex-col items-center justify-center gap-1.5">
+                        <span class="material-symbols-outlined text-[28px] text-slate-300">receipt_long</span>
+                        <span class="font-bold text-slate-600 text-sm">No payments recorded for this unit yet</span>
+                    </div>
+                </div>`;
             } else {
-                tbody.innerHTML = data.history.map(h => {
-                    const amtFmt = Number(h.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+                timeline.innerHTML = periods.map((p, idx) => {
+                    const totalFmt = Number(p.total_paid || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+                    const rangeText = p.start_date === p.end_date ? (p.start_date || '—') : `${p.start_date || '—'} → ${p.end_date || '—'}`;
+                    const voucherRows = p.vouchers.map(v => {
+                        const amtFmt = Number(v.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+                        return `
+                            <tr>
+                                <td class="py-1.5 px-2 text-on-surface">${v.date || '—'}</td>
+                                <td class="py-1.5 px-2 text-primary font-semibold">${v.vch_no || '—'}</td>
+                                <td class="py-1.5 px-2 text-right text-on-surface font-semibold">₹${amtFmt}</td>
+                                <td class="py-1.5 px-2 font-sans text-xs text-on-surface-variant">${v.classification || '—'}</td>
+                                <td class="py-1.5 px-2 font-sans text-[11px] text-on-surface-variant">${v.narration || '—'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+
+                    const divider = idx > 0 ? `
+                        <div class="flex items-center gap-2 -my-1.5">
+                            <div class="flex-1 border-t border-dashed border-slate-300"></div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                <span class="material-symbols-outlined text-[14px]">sync_alt</span> Ownership Transferred
+                            </span>
+                            <div class="flex-1 border-t border-dashed border-slate-300"></div>
+                        </div>
+                    ` : '';
+
                     return `
-                        <tr>
-                            <td class="py-2 px-2 text-on-surface">${h.date || '—'}</td>
-                            <td class="py-2 px-2 text-primary font-semibold">${h.vch_no || '—'}</td>
-                            <td class="py-2 px-2 font-sans text-on-surface">${h.party_name || '—'}</td>
-                            <td class="py-2 px-2 text-right text-on-surface font-semibold">₹${amtFmt}</td>
-                            <td class="py-2 px-2 font-sans text-xs text-on-surface-variant">${h.classification || '—'}</td>
-                        </tr>
+                        ${divider}
+                        <div class="rounded-xl border border-slate-200 overflow-hidden">
+                            <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-6 h-6 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">${p.sequence}</span>
+                                    <span class="font-display text-sm font-extrabold text-slate-900">${p.owner}</span>
+                                    <span class="text-[11px] text-slate-500 font-mono">${rangeText}</span>
+                                </div>
+                                <div class="text-xs font-mono font-bold text-slate-700">
+                                    ₹${totalFmt} <span class="text-slate-400 font-medium">(${p.payment_count} payment${p.payment_count === 1 ? '' : 's'})</span>
+                                </div>
+                            </div>
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="text-slate-400 border-b border-slate-100 font-mono uppercase tracking-wider text-[10px]">
+                                        <th class="py-1.5 px-2">Date</th>
+                                        <th class="py-1.5 px-2">Vch No</th>
+                                        <th class="py-1.5 px-2 text-right">Amount (₹)</th>
+                                        <th class="py-1.5 px-2">Classification</th>
+                                        <th class="py-1.5 px-2">Narration</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 font-mono">${voucherRows}</tbody>
+                            </table>
+                        </div>
                     `;
                 }).join('');
             }
         }
     } catch (err) {
-        if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-red-500">Failed to load history: ${err.message}</td></tr>`;
+        if (timeline) timeline.innerHTML = `<div class="text-center py-6 text-red-500 font-sans text-xs">Failed to load history: ${err.message}</div>`;
     }
 }
 

@@ -1106,11 +1106,12 @@ def api_units():
             continue
 
         matched = vch_by_unit.get(unit_no.upper(), [])
-        total_paid = sum(float(v.get("amount") or 0) for v in matched)
-        dates = sorted([v.get("date") or "" for v in matched if v.get("date")])
+        genuine, _cancelled = _split_genuine_and_cancelled(matched)
+        total_paid = sum(float(v.get("amount") or 0) for v in genuine)
+        dates = [v.get("date") for v in genuine if v.get("date")]
         owners = []
         seen_owner = set()
-        for v in sorted(matched, key=lambda x: x.get("date") or ""):
+        for v in genuine:
             name = (v.get("party_name") or "").strip()
             if name and name not in seen_owner:
                 seen_owner.add(name)
@@ -1127,11 +1128,11 @@ def api_units():
             "carpet_sqft": float(u.get("carpet_sqft") or 0),
             "terrace_sqft": float(u.get("terrace_sqft") or 0),
             "total_paid": total_paid,
-            "payment_count": len(matched),
+            "payment_count": len(genuine),
             "first_payment_date": dates[0] if dates else None,
             "last_payment_date": dates[-1] if dates else None,
             "owners": owners,
-            "status": "paid" if matched else "no_payments"
+            "status": "paid" if genuine else "no_payments"
         })
 
     return jsonify({
@@ -1144,9 +1145,52 @@ def api_units():
         "units": units_out
     })
 
+TRANSFER_NOTE_KEYWORDS = ["noc", "transfer", "name change", "resale", "re-sale", "resold", "name transfer"]
+
+def _voucher_date_sort_key(date_str):
+    """Parses a 'DD-MM-YYYY' voucher date into a (year, month, day) tuple for correct
+    chronological sorting - sorting the raw string is wrong since the day comes first."""
+    parts = str(date_str or "").strip().split("-")
+    if len(parts) == 3 and len(parts[2]) == 4:
+        try:
+            return (int(parts[2]), int(parts[1]), int(parts[0]))
+        except ValueError:
+            pass
+    return (0, 0, 0)
+
+def _split_genuine_and_cancelled(vouchers):
+    """Splits a unit's vouchers into (genuine, cancelled) by paying party. The 'cancel'
+    signal can appear in the party name ('...-CANCELLED') or only in a voucher's
+    narration (e.g. a refund entry carrying the original booking's party name with no
+    CANCELLED suffix) - so once ANY voucher under a given party name mentions
+    cancellation, that party's whole voucher set is treated as a fallen-through
+    booking, not a genuine ownership period. Both outputs are chronologically sorted."""
+    by_party = {}
+    for v in vouchers:
+        name = (v.get("party_name") or "").strip() or "Unknown"
+        by_party.setdefault(name, []).append(v)
+
+    cancelled, genuine = [], []
+    for name, vs in by_party.items():
+        has_cancel_signal = any(
+            "cancel" in ((v.get("party_name") or "") + " " + (v.get("narration") or "")).lower()
+            for v in vs
+        )
+        (cancelled if has_cancel_signal else genuine).extend(vs)
+
+    cancelled.sort(key=lambda x: _voucher_date_sort_key(x.get("date")))
+    genuine.sort(key=lambda x: _voucher_date_sort_key(x.get("date")))
+    return genuine, cancelled
+
 @app.route("/api/units/history", methods=["GET"])
 def api_unit_history():
-    """Full payment history (voucher list) and ownership history for one unit."""
+    """Full payment history and ownership history for one unit. Since Tally has no
+    dedicated 'ownership transfer' voucher type, ownership changes are inferred by
+    grouping the unit's vouchers (in true chronological order) into consecutive runs
+    under the same paying party - e.g. Rahul Patel's vouchers, then a change to
+    Narotam's vouchers marks a resale. Narration text is also scanned for
+    NOC/transfer/resale keywords as a best-effort flag, since those entries (when the
+    CA books them) are the closest thing to an explicit transfer record in this data."""
     PROJECTS_METADATA = get_projects_metadata()
     project_query = request.args.get("project", "010010").strip()
     unit_query = request.args.get("unit", "").strip().upper()
@@ -1156,33 +1200,77 @@ def api_unit_history():
 
     voucher_rows = db.get_vouchers(target_key)
     matched = [r for r in voucher_rows if str(r.get("unit_no") or "").strip().upper() == unit_query]
-    matched.sort(key=lambda x: x.get("date") or "")
+    matched.sort(key=lambda x: _voucher_date_sort_key(x.get("date")))
 
-    history = []
-    owners = []
-    seen_owner = set()
-    for v in matched:
-        name = (v.get("party_name") or "").strip()
-        if name and name not in seen_owner:
-            seen_owner.add(name)
-            owners.append(name)
-        history.append({
+    def _to_history_item(v):
+        return {
             "date": v.get("date"),
             "vch_no": v.get("voucher_number"),
             "party_name": v.get("party_name"),
             "amount": float(v.get("amount") or 0),
             "classification": v.get("classification"),
+            "narration": v.get("narration"),
             "is_exempt": bool(v.get("is_exempt"))
-        })
+        }
+
+    history = [_to_history_item(v) for v in matched]
+    genuine_vouchers, cancelled_vouchers = _split_genuine_and_cancelled(matched)
+
+    owners = []
+    seen_owner = set()
+    for v in genuine_vouchers:
+        name = (v.get("party_name") or "").strip()
+        if name and name not in seen_owner:
+            seen_owner.add(name)
+            owners.append(name)
+
+    # Group into ownership periods: a new period starts whenever the paying party changes
+    ownership_periods = []
+    for v in genuine_vouchers:
+        name = (v.get("party_name") or "").strip() or "Unknown"
+        if not ownership_periods or ownership_periods[-1]["owner"] != name:
+            ownership_periods.append({"owner": name, "_vouchers": []})
+        ownership_periods[-1]["_vouchers"].append(v)
+
+    for idx, p in enumerate(ownership_periods):
+        vs = p["_vouchers"]
+        p["sequence"] = idx + 1
+        p["start_date"] = vs[0].get("date")
+        p["end_date"] = vs[-1].get("date")
+        p["total_paid"] = sum(float(v.get("amount") or 0) for v in vs)
+        p["payment_count"] = len(vs)
+        p["vouchers"] = [_to_history_item(v) for v in vs]
+        del p["_vouchers"]
+
+    cancelled_bookings = [_to_history_item(v) for v in cancelled_vouchers]
+
+    transfer_notes = []
+    for v in matched:
+        narr = (v.get("narration") or "").lower()
+        if any(kw in narr for kw in TRANSFER_NOTE_KEYWORDS):
+            transfer_notes.append({
+                "date": v.get("date"),
+                "vch_no": v.get("voucher_number"),
+                "party_name": v.get("party_name"),
+                "amount": float(v.get("amount") or 0),
+                "narration": v.get("narration")
+            })
+
+    genuine_total = sum(float(v.get("amount") or 0) for v in genuine_vouchers)
+    cancelled_total = sum(float(v.get("amount") or 0) for v in cancelled_vouchers)
 
     return jsonify({
         "status": "success",
         "project_key": target_key,
         "unit_no": unit_query,
         "owners": owners,
-        "payment_count": len(history),
-        "total_paid": sum(h["amount"] for h in history),
-        "history": history
+        "payment_count": len(genuine_vouchers),
+        "total_paid": genuine_total,
+        "history": history,
+        "ownership_periods": ownership_periods,
+        "cancelled_bookings": cancelled_bookings,
+        "cancelled_total": cancelled_total,
+        "transfer_notes": transfer_notes
     })
 
 @app.route("/api/vouchers/sync", methods=["POST"])
