@@ -57,19 +57,23 @@ class ExcelGenerator:
     def generate_monthly_workbook(self, target_month_str: str, project_data: dict, output_path: str) -> str:
         """
         Creates a new workbook from template, updates month headers, injects unit-wise
-        collections for the target tax period, and saves to output_path with intact formulas.
+        collections for the target tax period, pre-evaluates and caches formula values
+        for seamless display in Protected View, and saves with intact live formulas.
         """
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         # Copy template directly to preserve exact styles, merged cells, fonts, and formulas
         shutil.copy2(self.template_path, output_path)
 
         wb = openpyxl.load_workbook(output_path)
+        wb.calculation.fullCalcOnLoad = True
 
         m_abbr, m_full, short_y, full_y, m_num, last_day = self.parse_month_year(target_month_str)
         target_display = f"{m_abbr}-{short_y}"
         target_display_tick = f"{m_abbr}'{short_y}"
-        target_display_space = f"{m_abbr} - {short_y}"
         last_date_obj = datetime(int(full_y), m_num, last_day)
+
+        # Dictionary to store pre-evaluated numeric values: (sheet_name, cell_coord) -> number
+        self.computed_values = {}
 
         # 1. Update Month headers, labels & dates across all sheets
         for sheet_name in wb.sheetnames:
@@ -92,39 +96,37 @@ class ExcelGenerator:
                         if new_val != val:
                             cell.value = new_val
 
-        # 2. Populate or Refresh Member Collection Sheets
-        # Mapping known projects to their sheets
-        # 010010: "SUN REALTY FOOTPRINT- MEMBERS"
-        # 010011: "SUN PARK WEST- MEMBER COLL."
-        # 010000: "DATA"
-        # 010009: "SUN REALTY-MEM COLL"
-        # 010002: "SUN SILVER SPRING-MEMBER COLL"
-        # 010015: "LEKHAMBHA- Member coll"
-        
+        # 2. Populate Member Collection Sheets
         self._populate_footprint_sheet(wb, project_data.get("010010") or project_data.get("FOOTPRINT") or [])
         self._populate_parkwest_sheet(wb, project_data.get("010011") or project_data.get("PARK WEST") or [])
 
+        # Set active sheet to member collection matching CA presentation
+        if "SUN PARK WEST- MEMBER COLL." in wb.sheetnames:
+            wb.active = wb["SUN PARK WEST- MEMBER COLL."]
+
         wb.save(output_path)
+
+        # 3. Inject pre-computed cached values into XML so Excel Protected View displays numbers immediately
+        self._inject_cached_xml_values(output_path)
+
         print(f"[ExcelGenerator] Generated finalized GST workbook: {output_path}")
         return output_path
 
     def _populate_footprint_sheet(self, wb, vouchers):
         """
         Populates SUN REALTY FOOTPRINT- MEMBERS with actual target month vouchers.
-        Follows CA directives, using the classification server.py's enrich_and_classify_vouchers
-        already computed per voucher (_is_income, _is_after_bu, _tax_rate), rather than
-        re-deriving it here - this is what keeps the generated Excel in sync with the dashboard:
+        Follows CA directives:
         1. Creditors/vendors/non-GST pass-throughs/cancelled bookings/implausible amounts excluded.
         2. Flats purchased after BU permission are 0% GST (Completely Exempt).
-        3. Tax on Before-BU advances calculated considering the receipt as inclusive of tax base,
-           at the rate slab (1%/5%) that unit's total consideration actually falls into.
+        3. Tax on Before-BU advances calculated considering the receipt as inclusive of tax base.
+        4. Injects pre-evaluated cached values for all populated and empty template rows.
         """
         sheet_name = "SUN REALTY FOOTPRINT- MEMBERS"
         if sheet_name not in wb.sheetnames:
             return
         ws = wb[sheet_name]
 
-        # 1. Clear residential rows (9 to 217)
+        # 1. Clear residential rows (9 to 217) and reset default formulas
         for r in range(9, 218):
             ws.cell(r, 1).value = None
             ws.cell(r, 2).value = None
@@ -140,8 +142,12 @@ class ExcelGenerator:
             ws.cell(r, 12).value = None
             ws.cell(r, 13).value = f'=C{r}-D{r}-F{r}-H{r}'
             ws.cell(r, 14).value = f'=ROUND(M{r}*0.5/101, 2)'
+            self.computed_values[(sheet_name, f'E{r}')] = 0
+            self.computed_values[(sheet_name, f'G{r}')] = 0
+            self.computed_values[(sheet_name, f'M{r}')] = 0
+            self.computed_values[(sheet_name, f'N{r}')] = 0
 
-        # 2. Clear shop rows (223 to 229)
+        # 2. Clear shop rows (223 to 229) and reset default formulas
         for r in range(223, 230):
             ws.cell(r, 1).value = None
             ws.cell(r, 2).value = None
@@ -157,32 +163,23 @@ class ExcelGenerator:
             ws.cell(r, 12).value = None
             ws.cell(r, 13).value = f'=C{r}-D{r}-F{r}'
             ws.cell(r, 14).value = f'=ROUND(M{r}*2.5/105, 2)'
+            self.computed_values[(sheet_name, f'E{r}')] = 0
+            self.computed_values[(sheet_name, f'G{r}')] = 0
+            self.computed_values[(sheet_name, f'M{r}')] = 0
+            self.computed_values[(sheet_name, f'N{r}')] = 0
 
         if not vouchers:
             return
 
-        # 3. Group vouchers by unit (strictly excluding creditors)
+        # 3. Group vouchers by unit
         res_units = {}
         shop_units = {}
         total_after_bu_exempt = 0.0
+        tot_res_net = 0.0
+        tot_res_cgst = 0.0
 
         for v in vouchers:
             party = str(v.get("party_name") or v.get("name") or v.get("member_name") or "").strip()
-
-            # Classification (creditor/cancelled/implausible-amount exclusion, After-BU exemption,
-            # pass-through category, and the 1%/5% rate slab) is computed once, upstream, by
-            # server.py's enrich_and_classify_vouchers - use it here instead of re-deriving it,
-            # so this file can never silently drift from what the dashboard shows.
-            #
-            # A unit's registration-fee/stamp-duty receipts are their OWN separate Tally vouchers
-            # (not a sub-amount bundled inside a bigger receipt), tagged "pass_through" rather than
-            # "income" by enrich_and_classify_vouchers. They still belong on that unit's row - in
-            # columns D/F specifically, which this template's own NET RECEIPT formula (=C-D-F-H)
-            # subtracts back out - so the taxable base ends up correct either way, but the CA can
-            # now actually see the stamp-duty/reg-fee breakdown instead of it vanishing. Other
-            # pass-through categories (refundable deposit, maintenance deposit, electricity exp)
-            # are NOT added here: the template's formula doesn't subtract them back out, so
-            # including them would inflate the taxable base - they stay excluded, as before.
             pass_through_type = v.get("_pass_through_type")
             is_income_v = bool(v.get("_is_income", v.get("is_income", True)))
             if not is_income_v and pass_through_type not in ("reg_fee", "stamp_duty"):
@@ -198,7 +195,6 @@ class ExcelGenerator:
             if unit_is_after_bu:
                 total_after_bu_exempt += max(0.0, amt - reg_fee - stamp_duty)
 
-            # Check if residential or commercial
             if re.match(r'^[A-Za-z]\s*[\-_/]', unit):
                 if unit not in res_units:
                     res_units[unit] = {"unit": unit, "party": party, "amount": 0.0, "reg_fee": 0.0, "stamp_duty": 0.0, "is_after_bu": unit_is_after_bu, "rate": unit_rate}
@@ -210,7 +206,6 @@ class ExcelGenerator:
                 if unit_is_after_bu:
                     res_units[unit]["is_after_bu"] = True
             else:
-                # Genuine shop/commercial units only
                 if not unit and not any(k in party.lower() for k in ["shop", "sh-", "sh "]):
                     continue
                 u_key = unit or f"Shop-{party[:15]}"
@@ -234,21 +229,31 @@ class ExcelGenerator:
             ws.cell(r_idx, 3).value = data["amount"]
             if data["reg_fee"] > 0:
                 ws.cell(r_idx, 4).value = data["reg_fee"]
+                self.computed_values[(sheet_name, f'E{r_idx}')] = round(data["reg_fee"], 2)
             if data["stamp_duty"] > 0:
                 ws.cell(r_idx, 6).value = data["stamp_duty"]
+                self.computed_values[(sheet_name, f'G{r_idx}')] = round(data["stamp_duty"], 2)
 
             # Tax Calculation:
             if data.get("is_after_bu"):
                 # Flats purchased after BU permission are 0% GST (Completely Exempt)
                 ws.cell(r_idx, 13).value = 0
                 ws.cell(r_idx, 14).value = 0
+                self.computed_values[(sheet_name, f'M{r_idx}')] = 0
+                self.computed_values[(sheet_name, f'N{r_idx}')] = 0
             else:
-                # Before-BU advances: tax inclusive of tax base, at this unit's own rate slab
-                # (1% if its total consideration is within the affordable threshold, else 5%)
                 rate = data.get("rate", 0.01)
                 half_pct, denom = rate * 50, 100 + rate * 100
                 ws.cell(r_idx, 13).value = f'=C{r_idx}-D{r_idx}-F{r_idx}-H{r_idx}'
                 ws.cell(r_idx, 14).value = f'=ROUND(M{r_idx}*{half_pct:g}/{denom:g}, 2)'
+
+                net_val = max(0.0, data["amount"] - data["reg_fee"] - data["stamp_duty"])
+                cgst_val = round(net_val * half_pct / denom, 2)
+                self.computed_values[(sheet_name, f'M{r_idx}')] = round(net_val, 2)
+                self.computed_values[(sheet_name, f'N{r_idx}')] = cgst_val
+                tot_res_net += net_val
+                tot_res_cgst += cgst_val
+
             r_idx += 1
 
         # 5. Populate shop units into rows 223..229
@@ -261,45 +266,59 @@ class ExcelGenerator:
             ws.cell(s_idx, 3).value = data["amount"]
             if data["reg_fee"] > 0:
                 ws.cell(s_idx, 4).value = data["reg_fee"]
+                self.computed_values[(sheet_name, f'E{s_idx}')] = round(data["reg_fee"], 2)
             if data["stamp_duty"] > 0:
                 ws.cell(s_idx, 6).value = data["stamp_duty"]
+                self.computed_values[(sheet_name, f'G{s_idx}')] = round(data["stamp_duty"], 2)
 
             if data.get("is_after_bu"):
                 ws.cell(s_idx, 13).value = 0
                 ws.cell(s_idx, 14).value = 0
+                self.computed_values[(sheet_name, f'M{s_idx}')] = 0
+                self.computed_values[(sheet_name, f'N{s_idx}')] = 0
             else:
-                # Commercial units: always the commercial rate slab, inclusive of tax base
                 rate = data.get("rate", 0.05)
                 half_pct, denom = rate * 50, 100 + rate * 100
                 ws.cell(s_idx, 13).value = f'=C{s_idx}-D{s_idx}-F{s_idx}'
                 ws.cell(s_idx, 14).value = f'=ROUND(M{s_idx}*{half_pct:g}/{denom:g}, 2)'
+                net_val = max(0.0, data["amount"] - data["reg_fee"] - data["stamp_duty"])
+                cgst_val = round(net_val * half_pct / denom, 2)
+                self.computed_values[(sheet_name, f'M{s_idx}')] = round(net_val, 2)
+                self.computed_values[(sheet_name, f'N{s_idx}')] = cgst_val
             s_idx += 1
+
+        # Track Footprint grand totals for XML cache
+        self.computed_values[(sheet_name, 'M230')] = round(tot_res_net, 2)
+        self.computed_values[(sheet_name, 'N230')] = round(tot_res_cgst, 2)
 
         # 6. Update After-BU Exempt Sale in FOOTPRINT- CALCULATION Row 17
         if "FOOTPRINT- CALCULATION" in wb.sheetnames:
             ws_calc = wb["FOOTPRINT- CALCULATION"]
             if total_after_bu_exempt > 0:
                 ws_calc.cell(17, 2).value = round(total_after_bu_exempt, 2)
-            # Ensure Row 6 formula computes tax inclusive of tax base
+                self.computed_values[("FOOTPRINT- CALCULATION", "B17")] = round(total_after_bu_exempt, 2)
             ws_calc.cell(6, 4).value = "=ROUND(B6*0.5/101, 2)"
             ws_calc.cell(6, 5).value = "=+D6"
+            self.computed_values[("FOOTPRINT- CALCULATION", "B11")] = round(tot_res_net, 2)
+            self.computed_values[("FOOTPRINT- CALCULATION", "D11")] = round(tot_res_cgst, 2)
+            self.computed_values[("FOOTPRINT- CALCULATION", "E11")] = round(tot_res_cgst, 2)
+            self.computed_values[("FOOTPRINT- CALCULATION", "F11")] = round(tot_res_cgst * 2, 2)
 
     def _populate_parkwest_sheet(self, wb, vouchers):
         """
-        Populates SUN PARK WEST- MEMBER COLL. with target month vouchers, mirroring
-        _populate_footprint_sheet's handling (see its docstring): reg-fee/stamp-duty
-        pass-through receipts stay on the member's row (columns D/F, which this sheet's
-        own NET RECEIPT formula =C-D-F[-I] subtracts back out) instead of being dropped -
-        this is the CA-reported bug ("advance receipts... not fetched correctly"). Also
-        replaces the template's default flat 0.5%-on-top GST formula with the inclusive-
-        of-tax-base calculation at each unit's own rate slab, matching Footprint.
+        Populates SUN PARK WEST- MEMBER COLL. with target month vouchers.
+        Follows CA presentation standards (Screenshot 1):
+        1. Col K (NET RECEIPT) = C - D - F.
+        2. Col L (GST) = +K*1%/2.
+        3. Empty rows maintain default formulas evaluating to 0 ('-' in Excel currency format).
+        4. Injects pre-evaluated cached values for all cells.
         """
         sheet_name = "SUN PARK WEST- MEMBER COLL."
         if sheet_name not in wb.sheetnames:
             return
         ws = wb[sheet_name]
 
-        # Clear residential rows 9..73 (K/L are formulas, recomputed from the inputs below)
+        # Clear residential rows 9..73 and reset default formulas
         for r in range(9, 74):
             ws.cell(r, 1).value = None
             ws.cell(r, 2).value = None
@@ -311,12 +330,15 @@ class ExcelGenerator:
             ws.cell(r, 8).value = None
             ws.cell(r, 9).value = None
             ws.cell(r, 11).value = f'=C{r}-D{r}-F{r}'
-            ws.cell(r, 12).value = f'=ROUND(K{r}*0.5/101, 2)'
+            ws.cell(r, 12).value = f'=+K{r}*1%/2'
+            self.computed_values[(sheet_name, f'E{r}')] = 0
+            self.computed_values[(sheet_name, f'G{r}')] = 0
+            self.computed_values[(sheet_name, f'K{r}')] = 0
+            self.computed_values[(sheet_name, f'L{r}')] = 0
 
         if not vouchers:
             return
 
-        # Group and populate (classification pre-computed upstream - see _populate_footprint_sheet)
         units_map = {}
         for v in vouchers:
             party = str(v.get("party_name") or v.get("name") or v.get("member_name") or "").strip()
@@ -343,6 +365,9 @@ class ExcelGenerator:
                 units_map[unit]["is_after_bu"] = True
 
         r_idx = 9
+        tot_pw_net = 0.0
+        tot_pw_gst = 0.0
+
         for u, data in sorted(units_map.items()):
             if r_idx >= 74:
                 break
@@ -351,15 +376,112 @@ class ExcelGenerator:
             ws.cell(r_idx, 3).value = data["amount"]
             if data["reg_fee"] > 0:
                 ws.cell(r_idx, 4).value = data["reg_fee"]
+                self.computed_values[(sheet_name, f'E{r_idx}')] = round(data["reg_fee"], 2)
             if data["stamp_duty"] > 0:
                 ws.cell(r_idx, 6).value = data["stamp_duty"]
+                self.computed_values[(sheet_name, f'G{r_idx}')] = round(data["stamp_duty"], 2)
 
             if data.get("is_after_bu"):
                 ws.cell(r_idx, 11).value = 0
                 ws.cell(r_idx, 12).value = 0
+                self.computed_values[(sheet_name, f'K{r_idx}')] = 0
+                self.computed_values[(sheet_name, f'L{r_idx}')] = 0
             else:
-                rate = data.get("rate", 0.01)
-                half_pct, denom = rate * 50, 100 + rate * 100
                 ws.cell(r_idx, 11).value = f'=C{r_idx}-D{r_idx}-F{r_idx}'
-                ws.cell(r_idx, 12).value = f'=ROUND(K{r_idx}*{half_pct:g}/{denom:g}, 2)'
+                ws.cell(r_idx, 12).value = f'=+K{r_idx}*1%/2'
+                net_val = max(0.0, data["amount"] - data["reg_fee"] - data["stamp_duty"])
+                gst_val = round(net_val * 0.01 / 2.0, 2)
+                self.computed_values[(sheet_name, f'K{r_idx}')] = round(net_val, 2)
+                self.computed_values[(sheet_name, f'L{r_idx}')] = gst_val
+                tot_pw_net += net_val
+                tot_pw_gst += gst_val
             r_idx += 1
+
+        self.computed_values[(sheet_name, 'K74')] = round(tot_pw_net, 2)
+        self.computed_values[(sheet_name, 'L74')] = round(tot_pw_gst, 2)
+
+        if "SUN PARK WEST" in wb.sheetnames:
+            self.computed_values[("SUN PARK WEST", "B10")] = round(tot_pw_net, 2)
+            self.computed_values[("SUN PARK WEST", "D10")] = round(tot_pw_gst, 2)
+            self.computed_values[("SUN PARK WEST", "E10")] = round(tot_pw_gst, 2)
+            self.computed_values[("SUN PARK WEST", "F10")] = round(tot_pw_gst * 2, 2)
+
+    def _inject_cached_xml_values(self, file_path: str):
+        """
+        Injects computed numerical values into the <v> tag of formula cells (<c><f>...</f></c>)
+        inside xl/worksheets/sheet*.xml.
+        When an Excel file is downloaded from the web, Microsoft Excel opens it in PROTECTED VIEW.
+        In Protected View, Excel disables formula evaluation and ONLY displays cached <v> values.
+        Without <v>, formula cells render as completely blank/empty white cells.
+        This post-processor guarantees that all calculated NET RECEIPT, GST, deductions, and sums
+        are immediately visible even in Protected View, while keeping the live Excel formulas intact.
+        """
+        import zipfile
+        import xml.etree.ElementTree as ET
+
+        if not os.path.exists(file_path):
+            return
+
+        temp_out = file_path + ".tmp.xlsx"
+        try:
+            with zipfile.ZipFile(file_path, "r") as zin:
+                wb_tree = ET.fromstring(zin.read("xl/workbook.xml"))
+                rels_tree = ET.fromstring(zin.read("xl/_rels/workbook.xml.rels"))
+                rel_map = {rel.get("Id"): rel.get("Target") for rel in rels_tree}
+
+                sheet_to_file = {}
+                for sheet in wb_tree.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet"):
+                    s_name = sheet.get("name")
+                    r_id = sheet.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+                    target = rel_map.get(r_id, "")
+                    if not target.startswith("worksheets/"):
+                        target = "worksheets/" + target.split("/")[-1]
+                    sheet_to_file[s_name] = "xl/" + target
+
+            file_to_sheet = {v: k for k, v in sheet_to_file.items()}
+            ET.register_namespace("", "http://schemas.openxmlformats.org/spreadsheetml/2006/main")
+
+            with zipfile.ZipFile(file_path, "r") as zin, zipfile.ZipFile(temp_out, "w") as zout:
+                for item in zin.infolist():
+                    data = zin.read(item.filename)
+                    if item.filename in file_to_sheet:
+                        s_name = file_to_sheet[item.filename]
+                        tree = ET.fromstring(data)
+                        modified = False
+                        for c in tree.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c"):
+                            coord = c.get("r")
+                            key = (s_name, coord)
+                            has_f = c.find("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}f") is not None
+                            if key in self.computed_values:
+                                val = self.computed_values[key]
+                                v = c.find("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v")
+                                if v is None:
+                                    v = ET.SubElement(c, "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v")
+                                if isinstance(val, (int, float)):
+                                    if val == int(val):
+                                        v.text = str(int(val))
+                                    else:
+                                        v.text = f"{val:.2f}".rstrip("0").rstrip(".")
+                                else:
+                                    v.text = str(val)
+                                modified = True
+                            elif has_f:
+                                v = c.find("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v")
+                                if v is None:
+                                    v = ET.SubElement(c, "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v")
+                                if not v.text:
+                                    v.text = "0"
+                                modified = True
+                        if modified:
+                            data = ET.tostring(tree, encoding="utf-8", xml_declaration=True)
+                    zout.writestr(item, data)
+
+            shutil.move(temp_out, file_path)
+        except Exception as e:
+            print(f"[ExcelGenerator] Warning during _inject_cached_xml_values: {e}")
+            if os.path.exists(temp_out):
+                try:
+                    os.remove(temp_out)
+                except Exception:
+                    pass
+

@@ -455,9 +455,17 @@ class DatabaseManager:
                     v_num = str(v.get("voucher_number") or v.get("vch_no") or v.get("voucher_no") or "").strip()
                     v_date = str(v.get("date") or v.get("iso_date") or "").strip()
                     party = str(v.get("party_name") or v.get("member_name") or v.get("name") or "").strip()
-                    orig = str(v.get("party_original") or v.get("raw_name") or party).strip()
                     blk = str(v.get("block_no") or "").strip()
                     unit = str(v.get("unit_no") or v.get("flat_no") or v.get("unit") or "").strip()
+
+                    # If unit is empty or a bank name, inspect bank_cash for real member unit
+                    bc = str(v.get("bank_cash") or "").strip()
+                    if (not unit or any(b in unit.upper() for b in ["HDFC", "AXIS", "ICICI", "BANK"])) and bc:
+                        u_bc, name_bc = _parse_unit_and_name(bc)
+                        if u_bc:
+                            unit = u_bc
+                            party = name_bc or party
+                            orig = bc
 
                     amt_raw = v.get("amount") if v.get("amount") is not None else v.get("cr_amount", 0)
                     try:
@@ -643,6 +651,14 @@ class DatabaseManager:
                         # as the flat code for a vendor/bank ledger that has no real unit.
                         # A real flat code always contains a digit, so this is unambiguous.
                         final_unit, final_name = "", str(orig).strip()
+                    elif old_unit_s and any(b in str(orig).upper() for b in ["HDFC BANK", "AXIS BANK", "ICICI BANK", "BANK MASTER"]):
+                        # party_original was mistakenly set to bank ledger name instead of member
+                        if self.is_postgres:
+                            cur.execute("UPDATE vouchers SET party_original = %s WHERE id = %s", (old_party, rid))
+                        else:
+                            cur.execute("UPDATE vouchers SET party_original = ? WHERE id = ?", (old_party, rid))
+                        fixed += 1
+                        continue
                     else:
                         continue
 
