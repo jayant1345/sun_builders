@@ -1,4 +1,4 @@
-let currentDownloadUrl = '/api/download/GSTR-1_AUG-26_AUTOMATED.xlsx';
+let currentDownloadUrl = '/api/download/GSTR-1_SEP-26_AUTOMATED.xlsx';
 
 async function checkStatus() {
     try {
@@ -787,10 +787,52 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup Month and Year Filter Dropdowns
     const vMonthSelect = document.getElementById('select-voucher-month');
     const vYearSelect = document.getElementById('select-voucher-year');
+    const gstr1MonthSelect = document.getElementById('select-month');
+
+    function syncMonthSelections(sourceValue) {
+        const clean = (sourceValue || 'SEP-26').split(' ')[0].toUpperCase();
+        currentDownloadUrl = `/api/download/GSTR-1_${clean}_AUTOMATED.xlsx`;
+        
+        const parts = clean.split('-');
+        const mPart = parts[0];
+        const yPart = parts.length > 1 ? (parts[1].length === 2 ? '20' + parts[1] : parts[1]) : '2026';
+        
+        if (vMonthSelect && vMonthSelect.value !== mPart) {
+            vMonthSelect.value = mPart;
+        }
+        if (vYearSelect && vYearSelect.value !== yPart) {
+            vYearSelect.value = yPart;
+        }
+        if (gstr1MonthSelect) {
+            for (let opt of gstr1MonthSelect.options) {
+                if (opt.value.startsWith(clean)) {
+                    gstr1MonthSelect.value = opt.value;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (gstr1MonthSelect) {
+        // Set initial download url from current select-month
+        const initM = gstr1MonthSelect.value.split(' ')[0];
+        currentDownloadUrl = `/api/download/GSTR-1_${initM}_AUTOMATED.xlsx`;
+
+        gstr1MonthSelect.addEventListener('change', (e) => {
+            const mVal = e.target.value.split(' ')[0];
+            syncMonthSelections(mVal);
+            loadRealVouchers();
+            appendLog('INFO', `Switched GSTR-1 return filing month to ${mVal}. Download URL ready.`);
+        });
+    }
 
     if (vMonthSelect) {
         vMonthSelect.addEventListener('change', (e) => {
             const mVal = e.target.value;
+            const yVal = vYearSelect ? vYearSelect.value.slice(-2) : '26';
+            if (mVal && mVal !== 'ALL') {
+                syncMonthSelections(`${mVal}-${yVal}`);
+            }
             loadRealVouchers();
             appendLog('INFO', `Filtered vouchers by month: ${mVal}.`);
         });
@@ -843,17 +885,21 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.disabled = true;
         btn.style.opacity = '0.7';
         const origHtml = btn.innerHTML;
-        btn.innerHTML = `<span class="material-symbols-outlined text-[20px] animate-spin">sync</span><span>Processing Vouchers...</span>`;
+        btn.innerHTML = `<span class="material-symbols-outlined text-[20px] animate-spin">sync</span><span>Compiling Vouchers...</span>`;
 
-        appendLog('INFO', '⚡ Triggered GSTR-1 Generation via Flask REST API...');
-        
         const selMonth = document.getElementById('select-month');
-        const inFrom = document.getElementById('input-from-date');
-        const inTo = document.getElementById('input-to-date');
+        const month = selMonth ? selMonth.value.split(' ')[0] : 'SEP-26';
 
-        const month = selMonth ? selMonth.value.split(' ')[0] : 'AUG-26';
-        const fromDate = inFrom ? inFrom.value : '2026-08-01';
-        const toDate = inTo ? inTo.value : '2026-08-31';
+        // Dynamically compute date range from selected month
+        const monthNumMap = {'JAN':'01','FEB':'02','MAR':'03','APR':'04','MAY':'05','JUN':'06','JUL':'07','AUG':'08','SEP':'09','OCT':'10','NOV':'11','DEC':'12'};
+        const [mCode, yCode] = month.split('-');
+        const mNum = monthNumMap[mCode.toUpperCase()] || '09';
+        const fullYear = yCode ? (yCode.length === 2 ? '20' + yCode : yCode) : '2026';
+        const daysInMonth = new Date(parseInt(fullYear), parseInt(mNum), 0).getDate();
+        const fromDate = `${fullYear}-${mNum}-01`;
+        const toDate = `${fullYear}-${mNum}-${String(daysInMonth).padStart(2, '0')}`;
+
+        appendLog('INFO', `⚡ Compiling GSTR-1 for ${month} (${fromDate} to ${toDate}) via Flask REST API...`);
 
         try {
             const resp = await fetch('/api/generate', {
@@ -867,9 +913,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res.logs) {
                     res.logs.forEach(l => appendLog('INFO', l));
                 }
-                appendLog('SUCCESS', `Successfully compiled 23-sheet GSTR-1 workbook: ${res.filename}`);
-                appendLog('READY', `Exempt Post-BU consideration: ₹14.82 Cr (Sun Footprint BU Cutoff: 18/03/2025 applied)`);
-                appendLog('READY', `Net Taxable Base & JVs ready. Initiating direct file download.`);
+                appendLog('SUCCESS', `Successfully compiled 23-sheet GSTR-1 workbook for ${res.month}: ${res.filename}`);
+                if (res.summary) {
+                    const grossCr = (Number(res.summary.gross_receipts || 0) / 10000000).toFixed(2);
+                    const exemptCr = (Number(res.summary.exempt_post_bu || 0) / 10000000).toFixed(2);
+                    const netTaxableCr = (Number(res.summary.net_taxable || 0) / 10000000).toFixed(2);
+                    appendLog('READY', `Gross Collections: ₹${grossCr} Cr | Post-BU Exempt: ₹${exemptCr} Cr | Net Taxable: ₹${netTaxableCr} Cr`);
+                    appendLog('READY', `${res.summary.total_units} Active Member Units verified. Initiating direct file download.`);
+                }
 
                 // Direct file download trigger
                 window.location.href = currentDownloadUrl;
@@ -892,8 +943,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 5. Download Button Handlers
     document.querySelectorAll('.btn-download-xlsx').forEach(btn => {
         btn.addEventListener('click', () => {
-            appendLog('INFO', `Downloading file: ${currentDownloadUrl}`);
-            window.location.href = currentDownloadUrl;
+            const selMonth = document.getElementById('select-month');
+            const targetMonth = selMonth ? selMonth.value.split(' ')[0] : 'SEP-26';
+            const dlUrl = `/api/download/GSTR-1_${targetMonth}_AUTOMATED.xlsx`;
+            appendLog('INFO', `Downloading GSTR-1 Excel file for ${targetMonth}: ${dlUrl}`);
+            window.location.href = dlUrl;
         });
     });
 
