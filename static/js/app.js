@@ -886,6 +886,75 @@ document.addEventListener('DOMContentLoaded', () => {
     const vYearSelect = document.getElementById('select-voucher-year');
     const gstr1MonthSelect = document.getElementById('select-month');
 
+    function formatINR(val) {
+        const num = Number(val || 0);
+        return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function updateStatutoryMonthLabels(cleanMonth) {
+        const m = cleanMonth || 'SEP-26';
+        const ids = ['statutory-mappings-month', 'statutory-output-tax-month', 'portfolio-aggregate-month'];
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = m;
+        });
+    }
+
+    function updateStatutoryCardUI(monthStr, summary) {
+        const cleanMonth = (monthStr || 'SEP-26').split(' ')[0].toUpperCase();
+        updateStatutoryMonthLabels(cleanMonth);
+
+        if (!summary) return;
+
+        // Overview Tab - Statutory GSTR-1 Return Mappings card
+        const t4Taxable = document.getElementById('statutory-table4-taxable');
+        const t4Tax = document.getElementById('statutory-table4-tax');
+        const t7Taxable = document.getElementById('statutory-table7-taxable');
+        const t7Tax = document.getElementById('statutory-table7-tax');
+        const t11Gross = document.getElementById('statutory-table11-gross');
+        const t11Tax = document.getElementById('statutory-table11-tax');
+        const totalLiab = document.getElementById('statutory-total-liability');
+
+        if (t4Taxable) t4Taxable.textContent = '₹' + formatINR(summary.table_4_b2b?.taxable || 0);
+        if (t4Tax) t4Tax.textContent = '₹' + formatINR(summary.table_4_b2b?.tax || 0);
+        if (t7Taxable) t7Taxable.textContent = '₹' + formatINR(summary.table_7_b2c?.taxable ?? summary.net_taxable ?? 0);
+        if (t7Tax) t7Tax.textContent = '₹' + formatINR(summary.table_7_b2c?.tax ?? summary.output_gst ?? 0);
+        if (t11Gross) t11Gross.textContent = '₹' + formatINR(summary.table_11_advances?.gross ?? summary.gross_receipts ?? 0);
+        if (t11Tax) t11Tax.textContent = '₹' + formatINR(summary.table_11_advances?.net_tax ?? summary.output_gst ?? 0);
+        if (totalLiab) totalLiab.textContent = '₹' + formatINR(summary.total_tax_liability ?? summary.output_gst ?? 0);
+
+        // Tab 5 - GSTR-1 & 3B Returns tab
+        const retT4Taxable = document.getElementById('tab-returns-table4-taxable');
+        const retT4Tax = document.getElementById('tab-returns-table4-tax');
+        const retT7Taxable = document.getElementById('tab-returns-table7-taxable');
+        const retT7Tax = document.getElementById('tab-returns-table7-tax');
+        const retT8Exempt = document.getElementById('tab-returns-table8-exempt');
+        const retT11Gross = document.getElementById('tab-returns-table11-gross');
+        const retT11Tax = document.getElementById('tab-returns-table11-tax');
+
+        if (retT4Taxable) retT4Taxable.textContent = '₹' + formatINR(summary.table_4_b2b?.taxable || 0);
+        if (retT4Tax) retT4Tax.textContent = '₹' + formatINR(summary.table_4_b2b?.tax || 0);
+        if (retT7Taxable) retT7Taxable.textContent = '₹' + formatINR(summary.table_7_b2c?.taxable ?? summary.net_taxable ?? 0);
+        if (retT7Tax) retT7Tax.textContent = '₹' + formatINR(summary.table_7_b2c?.tax ?? summary.output_gst ?? 0);
+        if (retT8Exempt) retT8Exempt.textContent = '₹' + formatINR(summary.exempt_post_bu || 0);
+        if (retT11Gross) retT11Gross.textContent = '₹' + formatINR(summary.table_11_advances?.gross ?? summary.gross_receipts ?? 0);
+        if (retT11Tax) retT11Tax.textContent = '₹' + formatINR(summary.table_11_advances?.net_tax ?? summary.output_gst ?? 0);
+    }
+
+    async function fetchAndRenderStatutorySummary(monthStr) {
+        const cleanMonth = (monthStr || 'SEP-26').split(' ')[0].toUpperCase();
+        updateStatutoryMonthLabels(cleanMonth);
+        try {
+            const resp = await fetch(`/api/gstr1/summary?month=${encodeURIComponent(cleanMonth)}`);
+            const res = await resp.json();
+            if (res.status === 'success' && res.summary) {
+                updateStatutoryCardUI(cleanMonth, res.summary);
+            }
+        } catch (err) {
+            console.warn('[Statutory Summary Fetch Failed]', err);
+        }
+    }
+
     function syncMonthSelections(sourceValue) {
         const clean = (sourceValue || 'SEP-26').split(' ')[0].toUpperCase();
         currentDownloadUrl = `/api/download/GSTR-1_${clean}_AUTOMATED.xlsx`;
@@ -908,12 +977,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
+        updateStatutoryMonthLabels(clean);
+        fetchAndRenderStatutorySummary(clean);
     }
 
     if (gstr1MonthSelect) {
         // Set initial download url from current select-month
         const initM = gstr1MonthSelect.value.split(' ')[0];
         currentDownloadUrl = `/api/download/GSTR-1_${initM}_AUTOMATED.xlsx`;
+        updateStatutoryMonthLabels(initM);
+        fetchAndRenderStatutorySummary(initM);
 
         gstr1MonthSelect.addEventListener('change', (e) => {
             const mVal = e.target.value.split(' ')[0];
@@ -1012,6 +1085,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 appendLog('SUCCESS', `Successfully compiled 23-sheet GSTR-1 workbook for ${res.month}: ${res.filename}`);
                 if (res.summary) {
+                    updateStatutoryCardUI(res.month || month, res.summary);
                     const grossCr = (Number(res.summary.gross_receipts || 0) / 10000000).toFixed(2);
                     const exemptCr = (Number(res.summary.exempt_post_bu || 0) / 10000000).toFixed(2);
                     const netTaxableCr = (Number(res.summary.net_taxable || 0) / 10000000).toFixed(2);

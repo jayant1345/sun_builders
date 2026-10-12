@@ -354,6 +354,66 @@ def api_status():
 def api_config():
     return jsonify(get_config())
 
+def compute_gstr1_summary(month_str):
+    """
+    Computes statutory GSTR-1 summary figures for the given tax period across all projects.
+    Uses unified enrichment and classification logic.
+    """
+    m_abbr, m_full, short_y, full_y, m_num, last_day = ExcelGenerator.parse_month_year(month_str)
+    month_normalized = f"{m_abbr}-{short_y}"
+
+    master = load_project_master()
+    proj_dict = master.get("projects", {})
+
+    all_target_vouchers = []
+    for pkey, pcfg in proj_dict.items():
+        pcode = pcfg.get("code")
+        if not pcode:
+            continue
+        v_list = db.get_vouchers(pcode)
+        has_bu = pcfg.get("has_bu", False)
+        bu_date_str = pcfg.get("bu_permission_date")
+        rate_cfg = get_project_rate_config(pcode)
+        classified_full = enrich_and_classify_vouchers(v_list, has_bu, bu_date_str, rate_cfg)
+
+        for v in classified_full:
+            v_date = v.get("date") or v.get("iso_date") or ""
+            vm, vy = extract_month_year(v_date)
+            if vm == f"{m_num:02d}" and (vy == full_y or vy == short_y):
+                all_target_vouchers.append(v)
+
+    income_v = [v for v in all_target_vouchers if v.get("_is_income")]
+    total_after_bu = 0.0
+    total_taxable_base = 0.0
+    total_output_gst = 0.0
+
+    for v in income_v:
+        amt = float(v.get("cr_amount") or v.get("amount") or 0)
+        if v.get("_is_after_bu"):
+            total_after_bu += amt
+        else:
+            inc_tax = calculate_inclusive_tax(amt, rate=v.get("_tax_rate", 0.01))
+            total_taxable_base += inc_tax["taxable_base"]
+            total_output_gst += inc_tax["total_gst"]
+
+    total_gross = sum(float(v.get("cr_amount") or v.get("amount") or 0) for v in income_v)
+    total_deductions = sum(float(v.get("deductions") or 0) for v in income_v)
+    distinct_units = len(set(v.get("unit_no") or v.get("unit") for v in income_v if v.get("unit_no") or v.get("unit")))
+
+    return {
+        "month": month_normalized,
+        "total_units": distinct_units,
+        "gross_receipts": round(total_gross, 2),
+        "non_gst_deductions": round(total_deductions, 2),
+        "exempt_post_bu": round(total_after_bu, 2),
+        "net_taxable": round(total_taxable_base, 2),
+        "output_gst": round(total_output_gst, 2),
+        "table_4_b2b": {"taxable": 0, "tax": 0},
+        "table_7_b2c": {"taxable": round(total_taxable_base, 2), "tax": round(total_output_gst, 2)},
+        "table_11_advances": {"gross": round(total_gross, 2), "net_tax": round(total_output_gst, 2)},
+        "total_tax_liability": round(total_output_gst, 2)
+    }
+
 def generate_gstr1_for_period(month_str):
     """
     Dynamically compiles the CA-standard multi-sheet GSTR-1 Excel workbook for the
@@ -380,9 +440,6 @@ def generate_gstr1_for_period(month_str):
         has_bu = pcfg.get("has_bu", False)
         bu_date_str = pcfg.get("bu_permission_date")
         rate_cfg = get_project_rate_config(pcode)
-        # Classify against the FULL voucher history, not just this month - a unit's
-        # total consideration (and therefore its 1%/5% rate slab) depends on all its
-        # receipts to date, not only the ones that happen to fall in this tax period.
         classified_full = enrich_and_classify_vouchers(v_list, has_bu, bu_date_str, rate_cfg)
 
         target_v = []
@@ -410,39 +467,18 @@ def generate_gstr1_for_period(month_str):
 
     gen.generate_monthly_workbook(month_normalized, project_data, out_file)
 
-    # Compute actual summary metrics from the shared classification computed above
-    income_v = [v for v in all_target_vouchers if v.get("_is_income")]
-    total_after_bu = 0.0
-    total_taxable_base = 0.0
-    total_output_gst = 0.0
-
-    for v in income_v:
-        amt = float(v.get("cr_amount") or v.get("amount") or 0)
-        if v.get("_is_after_bu"):
-            total_after_bu += amt
-        else:
-            inc_tax = calculate_inclusive_tax(amt, rate=v.get("_tax_rate", 0.01))
-            total_taxable_base += inc_tax["taxable_base"]
-            total_output_gst += inc_tax["total_gst"]
-
-    total_gross = sum(float(v.get("cr_amount") or v.get("amount") or 0) for v in income_v)
-    total_deductions = sum(float(v.get("deductions") or 0) for v in income_v)
-    distinct_units = len(set(v.get("unit_no") or v.get("unit") for v in income_v if v.get("unit_no") or v.get("unit")))
-
-    summary = {
-        "total_units": distinct_units,
-        "gross_receipts": round(total_gross, 2),
-        "non_gst_deductions": round(total_deductions, 2),
-        "exempt_post_bu": round(total_after_bu, 2),
-        "net_taxable": round(total_taxable_base, 2),
-        "output_gst": round(total_output_gst, 2),
-        "table_4_b2b": {"taxable": 0, "tax": 0},
-        "table_7_b2c": {"taxable": round(total_taxable_base, 2), "tax": round(total_output_gst, 2)},
-        "table_11_advances": {"gross": round(total_gross, 2), "net_tax": round(total_output_gst, 2)},
-        "total_tax_liability": round(total_output_gst, 2)
-    }
-
+    summary = compute_gstr1_summary(month_str)
     return filename, out_file, summary, from_date, to_date
+
+@app.route("/api/gstr1/summary", methods=["GET"])
+def api_gstr1_summary():
+    month = request.args.get("month", "SEP-26").strip()
+    summary = compute_gstr1_summary(month)
+    return jsonify({
+        "status": "success",
+        "month": summary.get("month", month),
+        "summary": summary
+    })
 
 @app.route("/api/generate", methods=["POST"])
 def api_generate():
