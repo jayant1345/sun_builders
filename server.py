@@ -262,6 +262,13 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    # API responses carry live financial/voucher data that changes between deploys and
+    # between syncs - caching them (browser or any edge/CDN layer) can silently show stale
+    # tax classification/totals after a fix ships, as happened here: a browser kept showing
+    # a pre-fix GST total long after the server was already returning the corrected one.
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
     return response
 
 @app.route("/")
