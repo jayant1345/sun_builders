@@ -305,7 +305,7 @@ async function loadRealVouchers(projectKey, month, year) {
                         tr.className = 'hover:bg-primary/5 transition-colors';
                         
                         let badgeHtml = '';
-                        if (v.badge_type === 'exempt_date_review') {
+                        if (v.badge_type === 'bu_review') {
                             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-orange-500/10 text-orange-600 border border-orange-500/30 font-medium">⚠ ${v.classification}</span>`;
                         } else if (v.badge_type === 'review') {
                             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-500/10 text-red-600 border border-red-500/30 font-medium">⚠ ${v.classification}</span>`;

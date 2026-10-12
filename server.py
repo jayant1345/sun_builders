@@ -161,15 +161,21 @@ def enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg):
         has_unit = classify_voucher_income(unit_val, party_val, raw_val, narr_val, amount=amt if is_plausible else None)
         # BU exemption priority chain:
         #   1. Explicit 'After Bu' ledger tag (CA staff's own record of which units were sold
-        #      post-BU) - the strongest signal, used as-is.
+        #      post-BU) - the strongest signal, drives actual exemption.
         #   2. The unit's first-ever payment date vs. the BU permission date (compute_unit_bu_status)
-        #      - a weaker signal, since it's only as reliable as how far back the synced Tally
-        #      history reaches. Kept distinguishable (its own badge/classification) rather than
-        #      merged into the confident tag-based bucket, so the CA can spot and correct it.
-        #   3. The pencil-edit manual override (below) always wins over both.
+        #      - advisory only, NOT applied as an exemption by default. Verified against this
+        #      project's real data: the synced history only reaches back to Apr-2026 (13 months
+        #      after the Mar-2025 BU date), so "unit's first synced payment is post-BU" mostly
+        #      just means "no earlier installment happens to be in this sync" - it does not mean
+        #      the unit was actually booked post-BU. Auto-exempting on this signal wrongly zeroed
+        #      out GST on Rs.1.5 Cr of genuine pre-BU installments (CA-reported, confirmed). It's
+        #      still surfaced as a flag ("bu_review") so the CA can review and confirm via the
+        #      pencil-edit when a unit genuinely was sold post-completion.
+        #   3. The pencil-edit manual override (below) always wins over both - this is the only
+        #      way signal 2 ever actually becomes an exemption.
         tag_after_bu = is_after_bu_member(party_val, raw_val, narr_val) or is_ex
         date_after_bu = (not tag_after_bu) and unit_bu_status.get(unit_val, False)
-        is_after_bu = tag_after_bu or date_after_bu
+        is_after_bu = tag_after_bu
 
         # CA manual overrides (set via the dashboard's pencil-edit) take priority over every
         # auto-detected signal above.
@@ -207,18 +213,17 @@ def enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg):
             badge_type, classification, taxable_amt = "expense", "Purchase / Expense", 0.0
         elif is_after_bu:
             taxable_amt = 0.0
-            if override_bu_status == "after_bu":
-                badge_type, classification = "exempt", "Exempt Post-BU (Schedule III) [CA Confirmed]"
-            elif tag_after_bu:
-                badge_type, classification = "exempt", "Exempt Post-BU (Schedule III)"
-            else:
-                badge_type, classification = "exempt_date_review", "Exempt Post-BU (Date-Based - Please Verify)"
+            badge_type, classification = "exempt", "Exempt Post-BU (Schedule III)" + (" [CA Confirmed]" if override_bu_status == "after_bu" else "")
         else:
             inc_tax = calculate_inclusive_tax(amt, rate=unit_rate)
             taxable_amt = inc_tax["taxable_base"]
-            badge_type = "taxable-1" if unit_rate <= 0.01 else "taxable-5"
-            suffix = " [CA Set Rate]" if override_rate else (" [CA Confirmed]" if override_bu_status == "before_bu" else "")
-            classification = f"Taxable Advance Receipt ({unit_rate*100:g}% Inclusive){suffix}"
+            if date_after_bu:
+                badge_type = "bu_review"
+                classification = f"Taxable @ {unit_rate*100:g}% - First Synced Payment is Post-BU, Not Tagged (Confirm with CA)"
+            else:
+                badge_type = "taxable-1" if unit_rate <= 0.01 else "taxable-5"
+                suffix = " [CA Set Rate]" if override_rate else (" [CA Confirmed]" if override_bu_status == "before_bu" else "")
+                classification = f"Taxable Advance Receipt ({unit_rate*100:g}% Inclusive){suffix}"
 
         v["_is_creditor"] = is_creditor
         v["_is_cancelled"] = is_cancelled
