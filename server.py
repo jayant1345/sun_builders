@@ -13,7 +13,8 @@ from core.tally_client import TallyClient
 from core.tally_file_reader import TallyFileReader
 from core.gst_rules import (
     RealEstateGSTRules, is_creditor_party, is_after_bu_member, is_cancelled_booking,
-    is_plausible_receipt_amount, is_voucher_after_bu_date, parse_voucher_date, calculate_inclusive_tax
+    is_plausible_receipt_amount, is_voucher_after_bu_date, parse_voucher_date, calculate_inclusive_tax,
+    classify_pass_through_type
 )
 from core.excel_generator import ExcelGenerator
 from core.db import db
@@ -43,6 +44,17 @@ def classify_voucher_income(unit_str, party_str, orig_str="", narr="", amount=No
     if not re.search(r"\d", u) and not any(k in (party_str or "").lower() for k in ["shop", "sh-", "sh "]):
         return False
     if amount is not None and not is_plausible_receipt_amount(float(amount)):
+        return False
+    return True
+
+def _is_genuine_sale_consideration(unit_val, party_val, raw_val, narr_val, amt):
+    """Like classify_voucher_income, but also excludes non-GST pass-through amounts (stamp
+    duty, registration fee, refundable deposit, etc.) - used when estimating a unit's total
+    consideration (for the 1%/5% rate slab) or its first booking date, since a pass-through
+    fee isn't part of the sale value and shouldn't count toward either."""
+    if not classify_voucher_income(unit_val, party_val, raw_val, narr_val, amount=amt):
+        return False
+    if classify_pass_through_type(party_val, raw_val, narr_val):
         return False
     return True
 
@@ -86,7 +98,7 @@ def compute_unit_tax_rates(db_rows, rate_cfg):
         raw_val = r.get("party_original") or ""
         narr_val = r.get("narration") or ""
         amt = float(r.get("amount") or 0)
-        if not classify_voucher_income(unit_val, party_val, raw_val, narr_val, amount=amt):
+        if not _is_genuine_sale_consideration(unit_val, party_val, raw_val, narr_val, amt):
             continue
         totals[unit_val] = totals.get(unit_val, 0.0) + amt
         if unit_val.upper().startswith("SHOP") or any(k in party_val.lower() for k in ["shop", "sh-", "sh "]):
@@ -117,7 +129,7 @@ def compute_unit_bu_status(db_rows, has_bu, bu_date_str):
         raw_val = r.get("party_original") or ""
         narr_val = r.get("narration") or ""
         amt = float(r.get("amount") or 0)
-        if not classify_voucher_income(unit_val, party_val, raw_val, narr_val, amount=amt):
+        if not _is_genuine_sale_consideration(unit_val, party_val, raw_val, narr_val, amt):
             continue
         v_date = r.get("date") or r.get("iso_date") or ""
         v_dt = parse_voucher_date(v_date)
@@ -159,6 +171,12 @@ def enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg):
         is_cancelled = is_cancelled_booking(party_val, raw_val, narr_val)
         is_plausible = is_plausible_receipt_amount(amt)
         has_unit = classify_voucher_income(unit_val, party_val, raw_val, narr_val, amount=amt if is_plausible else None)
+        # A non-GST pass-through (stamp duty, registration fee, refundable deposit, electricity
+        # exp, maintenance deposit) collected THROUGH a real member's unit - stays tied to that
+        # unit for the output sheet (its own Receipt/Payment column), excluded from the taxable
+        # base but never silently dropped. Only meaningful when has_unit is already true -
+        # a pass-through keyword with no real unit code is just a true creditor entry.
+        pass_through_type = classify_pass_through_type(party_val, raw_val, narr_val) if (has_unit and not is_creditor) else None
         # BU exemption priority chain:
         #   1. Explicit 'After Bu' ledger tag (CA staff's own record of which units were sold
         #      post-BU) - the strongest signal, drives actual exemption.
@@ -189,6 +207,7 @@ def enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg):
             if bool(override_is_income_raw):
                 is_creditor = is_cancelled = False
                 is_plausible = has_unit = True
+                pass_through_type = None
             else:
                 manually_excluded = True
         if override_bu_status == "after_bu":
@@ -196,7 +215,7 @@ def enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg):
         elif override_bu_status == "before_bu":
             is_after_bu = False
 
-        is_income = (not manually_excluded) and not is_creditor and not is_cancelled and is_plausible and has_unit
+        is_income = (not manually_excluded) and not is_creditor and not is_cancelled and is_plausible and has_unit and not pass_through_type
         unit_rate = float(override_rate) if override_rate else unit_rates.get(unit_val, rate_cfg["default_residential_rate"])
 
         if manually_excluded:
@@ -211,6 +230,10 @@ def enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg):
             badge_type, classification, taxable_amt = "review", "Excluded - Abnormal Amount (Needs CA Review)", 0.0
         elif not has_unit:
             badge_type, classification, taxable_amt = "expense", "Purchase / Expense", 0.0
+        elif pass_through_type:
+            badge_type = "pass_through"
+            classification = f"Non-GST Pass-Through ({pass_through_type.replace('_', ' ').title()})"
+            taxable_amt = 0.0
         elif is_after_bu:
             taxable_amt = 0.0
             badge_type, classification = "exempt", "Exempt Post-BU (Schedule III)" + (" [CA Confirmed]" if override_bu_status == "after_bu" else "")
@@ -230,6 +253,7 @@ def enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg):
         v["_is_plausible"] = is_plausible
         v["_is_after_bu"] = is_after_bu
         v["_date_after_bu"] = date_after_bu
+        v["_pass_through_type"] = pass_through_type
         v["_tax_rate"] = unit_rate
         v["_is_income"] = is_income
         v["_taxable_amount"] = taxable_amt
@@ -1212,9 +1236,11 @@ def api_vouchers():
 
             type_label = "Member Receipt" if is_income else (
                 "Excluded by CA" if r["_badge_type"] == "excluded_manual" else (
-                    "Vendor / Creditor" if is_creditor else (
-                        "Cancelled / Refunded" if r["_is_cancelled"] else (
-                            "Needs Review" if not r["_is_plausible"] else "Purchase / Expense"
+                    "Non-GST Pass-Through" if r["_badge_type"] == "pass_through" else (
+                        "Vendor / Creditor" if is_creditor else (
+                            "Cancelled / Refunded" if r["_is_cancelled"] else (
+                                "Needs Review" if not r["_is_plausible"] else "Purchase / Expense"
+                            )
                         )
                     )
                 )

@@ -170,16 +170,28 @@ class ExcelGenerator:
             party = str(v.get("party_name") or v.get("name") or v.get("member_name") or "").strip()
 
             # Classification (creditor/cancelled/implausible-amount exclusion, After-BU exemption,
-            # and the 1%/5% rate slab) is computed once, upstream, by server.py's
-            # enrich_and_classify_vouchers - use it here instead of re-deriving it, so this file
-            # can never silently drift from what the dashboard shows.
-            if not v.get("_is_income", v.get("is_income", True)):
+            # pass-through category, and the 1%/5% rate slab) is computed once, upstream, by
+            # server.py's enrich_and_classify_vouchers - use it here instead of re-deriving it,
+            # so this file can never silently drift from what the dashboard shows.
+            #
+            # A unit's registration-fee/stamp-duty receipts are their OWN separate Tally vouchers
+            # (not a sub-amount bundled inside a bigger receipt), tagged "pass_through" rather than
+            # "income" by enrich_and_classify_vouchers. They still belong on that unit's row - in
+            # columns D/F specifically, which this template's own NET RECEIPT formula (=C-D-F-H)
+            # subtracts back out - so the taxable base ends up correct either way, but the CA can
+            # now actually see the stamp-duty/reg-fee breakdown instead of it vanishing. Other
+            # pass-through categories (refundable deposit, maintenance deposit, electricity exp)
+            # are NOT added here: the template's formula doesn't subtract them back out, so
+            # including them would inflate the taxable base - they stay excluded, as before.
+            pass_through_type = v.get("_pass_through_type")
+            is_income_v = bool(v.get("_is_income", v.get("is_income", True)))
+            if not is_income_v and pass_through_type not in ("reg_fee", "stamp_duty"):
                 continue
 
             unit = str(v.get("unit_no") or v.get("unit") or v.get("flat_no") or "").strip()
             amt = float(v.get("cr_amount") or v.get("amount") or 0)
-            reg_fee = float(v.get("reg_fee") or 0)
-            stamp_duty = float(v.get("stamp_duty") or 0)
+            reg_fee = amt if pass_through_type == "reg_fee" else 0.0
+            stamp_duty = amt if pass_through_type == "stamp_duty" else 0.0
             unit_rate = float(v.get("_tax_rate") or 0.01)
 
             unit_is_after_bu = bool(v.get("_is_after_bu"))
@@ -274,14 +286,20 @@ class ExcelGenerator:
 
     def _populate_parkwest_sheet(self, wb, vouchers):
         """
-        Populates SUN PARK WEST- MEMBER COLL. with target month vouchers.
+        Populates SUN PARK WEST- MEMBER COLL. with target month vouchers, mirroring
+        _populate_footprint_sheet's handling (see its docstring): reg-fee/stamp-duty
+        pass-through receipts stay on the member's row (columns D/F, which this sheet's
+        own NET RECEIPT formula =C-D-F[-I] subtracts back out) instead of being dropped -
+        this is the CA-reported bug ("advance receipts... not fetched correctly"). Also
+        replaces the template's default flat 0.5%-on-top GST formula with the inclusive-
+        of-tax-base calculation at each unit's own rate slab, matching Footprint.
         """
         sheet_name = "SUN PARK WEST- MEMBER COLL."
         if sheet_name not in wb.sheetnames:
             return
         ws = wb[sheet_name]
 
-        # Clear residential rows 9..73
+        # Clear residential rows 9..73 (K/L are formulas, recomputed from the inputs below)
         for r in range(9, 74):
             ws.cell(r, 1).value = None
             ws.cell(r, 2).value = None
@@ -292,6 +310,8 @@ class ExcelGenerator:
             ws.cell(r, 7).value = f'=+F{r}'
             ws.cell(r, 8).value = None
             ws.cell(r, 9).value = None
+            ws.cell(r, 11).value = f'=C{r}-D{r}-F{r}'
+            ws.cell(r, 12).value = f'=ROUND(K{r}*0.5/101, 2)'
 
         if not vouchers:
             return
@@ -300,13 +320,27 @@ class ExcelGenerator:
         units_map = {}
         for v in vouchers:
             party = str(v.get("party_name") or v.get("name") or v.get("member_name") or "").strip()
-            if not v.get("_is_income", v.get("is_income", True)):
+            pass_through_type = v.get("_pass_through_type")
+            is_income_v = bool(v.get("_is_income", v.get("is_income", True)))
+            if not is_income_v and pass_through_type not in ("reg_fee", "stamp_duty"):
                 continue
+
             unit = str(v.get("unit_no") or v.get("unit") or v.get("flat_no") or "").strip()
             amt = float(v.get("cr_amount") or v.get("amount") or 0)
+            reg_fee = amt if pass_through_type == "reg_fee" else 0.0
+            stamp_duty = amt if pass_through_type == "stamp_duty" else 0.0
+            unit_rate = float(v.get("_tax_rate") or 0.01)
+            unit_is_after_bu = bool(v.get("_is_after_bu"))
+
             if unit not in units_map:
-                units_map[unit] = {"unit": unit, "party": party, "amount": 0.0}
+                units_map[unit] = {"unit": unit, "party": party, "amount": 0.0, "reg_fee": 0.0, "stamp_duty": 0.0, "is_after_bu": unit_is_after_bu, "rate": unit_rate}
             units_map[unit]["amount"] += amt
+            units_map[unit]["reg_fee"] += reg_fee
+            units_map[unit]["stamp_duty"] += stamp_duty
+            if party and not units_map[unit]["party"]:
+                units_map[unit]["party"] = party
+            if unit_is_after_bu:
+                units_map[unit]["is_after_bu"] = True
 
         r_idx = 9
         for u, data in sorted(units_map.items()):
@@ -315,4 +349,17 @@ class ExcelGenerator:
             ws.cell(r_idx, 1).value = data["unit"]
             ws.cell(r_idx, 2).value = data["party"]
             ws.cell(r_idx, 3).value = data["amount"]
+            if data["reg_fee"] > 0:
+                ws.cell(r_idx, 4).value = data["reg_fee"]
+            if data["stamp_duty"] > 0:
+                ws.cell(r_idx, 6).value = data["stamp_duty"]
+
+            if data.get("is_after_bu"):
+                ws.cell(r_idx, 11).value = 0
+                ws.cell(r_idx, 12).value = 0
+            else:
+                rate = data.get("rate", 0.01)
+                half_pct, denom = rate * 50, 100 + rate * 100
+                ws.cell(r_idx, 11).value = f'=C{r_idx}-D{r_idx}-F{r_idx}'
+                ws.cell(r_idx, 12).value = f'=ROUND(K{r_idx}*{half_pct:g}/{denom:g}, 2)'
             r_idx += 1

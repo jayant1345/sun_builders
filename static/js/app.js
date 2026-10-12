@@ -311,6 +311,8 @@ async function loadRealVouchers(projectKey, month, year) {
                             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-500/10 text-red-600 border border-red-500/30 font-medium">⚠ ${v.classification}</span>`;
                         } else if (v.badge_type === 'excluded_manual') {
                             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-purple-500/10 text-purple-600 border border-purple-500/30 font-medium">✎ ${v.classification}</span>`;
+                        } else if (v.badge_type === 'pass_through') {
+                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-sky-500/10 text-sky-600 border border-sky-500/30 font-medium">${v.classification}</span>`;
                         } else if (v.badge_type === 'creditor' || v.badge_type === 'expense') {
                             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-slate-400/10 text-slate-500 border border-slate-400/30 font-medium">${v.classification}</span>`;
                         } else if (v.badge_type === 'cancelled') {

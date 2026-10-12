@@ -2,10 +2,16 @@ import re
 from datetime import datetime
 
 CREDITOR_KEYWORDS = [
+    # True vendors/contractors/suppliers/banks - no connection to any member's unit, never
+    # shown on a member's row in the output sheet. Deliberately does NOT include stamp
+    # duty/registration fee/refundable deposit/electricity-exp keywords any more - those are
+    # non-GST amounts a MEMBER paid through their own unit's ledger (see classify_pass_through_type
+    # below), and belong in that member's row (in their own Receipt/Payment column), not dropped
+    # entirely. Conflating the two was the bug CA flagged: "advance receipts have been recorded,
+    # but the software is not fetching these receipts correctly" - stamp duty/reg fee vouchers
+    # tied to a real unit were being silently excluded instead of routed to their own column.
     r'\bcreditor\b', r'\bvendor\b', r'\bsupplier\b', r'\bcontractor\b', r'\bsubcontractor\b',
-    r'\bpurchase\b', r'\bmaterial\b', r'\belectric\b', r'\belectricity\b', r'\blight bill\b', r'\bcable\b', r'\bnotary\b',
-    r'\bstamp duty\b', r'\bregistration\b', r'\breg(?:n|istration)?\.?\s*fee\b', r'\bsale deed\b', r'\bsales deed\b', r'\bats\b',
-    r'\bmaintenance\b', r'\bmaintanance\b', r'\bauda\b', r'\baec\b', r'\btorrent\b',
+    r'\bpurchase\b', r'\bmaterial\b', r'\bcable\b', r'\bnotary\b', r'\bsale deed\b', r'\bsales deed\b', r'\bats\b',
     r'\bconsultant\b', r'\bprofessional fee\b', r'\blegal fee\b', r'\baudit fee\b', r'\bbank charges\b',
     r'\bcourier\b', r'\bprinting\b', r'\bstationery\b', r'\bfreight\b', r'\btransport\b', r'\broadlines\b', r'\blogistics\b',
     r'\blabour\b', r'\blabor\b', r'\bcement\b', r'\bsteel\b', r'\bsand supplier\b', r'\bbricks\b', r'\btiles\b', r'\bplumbing\b', r'\bsanitary\b',
@@ -14,9 +20,6 @@ CREDITOR_KEYWORDS = [
     r'\bgas\b', r'\bgujarat gas\b', r'\bhardware\b', r'\bplywood\b', r'\bglass\b', r'\baluminium\b', r'\baluminum\b', r'\biron\b',
     r'\br\.m\.c\b', r'\brmc\b', r'\breadymix\b', r'\bconcrete\b', r'\bearthmovers\b', r'\bexcavation\b', r'\bcrane\b', r'\bbank coll\b',
     r'\baxis bank\b', r'\bicici bank\b', r'\bhdfc bank\b', r'\bsbi\b',
-    # Refundable / security deposits are held in trust, not part of sale consideration (CA's own
-    # 5-category non-GST exclusion list). "Refund"/"refundable"/"refundale" (common typo) all match.
-    r'\brefund', r'\bsecurity deposit\b', r'\bmember deposit\b',
     # "M/s" (Messrs.) is a business-entity prefix - a flat/shop owner is never addressed this way,
     # only a registered firm. Backstops the creditor check for any vendor whose ledger name
     # happens to parse out a digit-containing fragment that looks like a flat code (e.g. a
@@ -30,9 +33,35 @@ CREDITOR_KEYWORDS = [
     r'\bpvt\.?\s*ltd\.?\b',
 ]
 
+# Non-GST amounts collected THROUGH a member's own unit ledger (the CA's 5-category exclusion
+# list) - these stay tied to that member's row in the output sheet (their own Receipt/Payment
+# column) rather than being dropped, but are excluded from the taxable base. Order matters:
+# checked top-to-bottom, first match wins, since e.g. a stamp-duty narration might also contain
+# "registration" in the same line.
+PASS_THROUGH_KEYWORDS = [
+    ("stamp_duty", [r'\bstamp duty\b']),
+    ("reg_fee", [r'\bregistration\b', r'\breg(?:n|istration)?\.?\s*fee\b']),
+    ("refundable_deposit", [r'\brefund', r'\bsecurity deposit\b', r'\bmember deposit\b']),
+    ("electricity_exp", [r'\belectric\b', r'\belectricity\b', r'\blight bill\b', r'\bauda\b', r'\baec\b', r'\btorrent\b']),
+    ("maintenance_deposit", [r'\bmaintenance\b', r'\bmaintanance\b']),
+]
+
+def classify_pass_through_type(party_str: str, raw_name: str = "", narr: str = ""):
+    """Returns the non-GST pass-through category ('stamp_duty', 'reg_fee',
+    'refundable_deposit', 'electricity_exp', 'maintenance_deposit') this voucher matches, or
+    None. Only meaningful for a voucher already confirmed tied to a real unit (has_unit) -
+    the caller is responsible for that check; this function only looks at keywords."""
+    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
+    for category, patterns in PASS_THROUGH_KEYWORDS:
+        if any(re.search(p, combined) for p in patterns):
+            return category
+    return None
+
 def is_creditor_party(party_str: str, raw_name: str = "", narr: str = "") -> bool:
-    """Returns True if party name or narration indicates a vendor/creditor/contractor,
-    or a non-GST pass-through (stamp duty, registration fee, refundable deposit, etc.)."""
+    """Returns True if party name or narration indicates a true vendor/creditor/contractor -
+    i.e. not connected to any member's unit. Non-GST pass-through amounts a member paid
+    through their own ledger (stamp duty, registration fee, etc.) are handled separately by
+    classify_pass_through_type, not here."""
     combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
     for kw in CREDITOR_KEYWORDS:
         if re.search(kw, combined):
