@@ -1535,24 +1535,121 @@ def api_unit_history():
     unit_query = request.args.get("unit", "").strip().upper()
 
     pcfg = PROJECTS_METADATA.get(project_query)
+    if not pcfg:
+        for k, pinfo in PROJECTS_METADATA.items():
+            if k in project_query or pinfo["name"].lower() in project_query.lower() or project_query.lower() in pinfo["name"].lower():
+                pcfg = pinfo
+                break
     target_key = pcfg["code"] if pcfg else project_query
+    project_name = pcfg.get("name", "Project") if pcfg else target_key
+
+    has_bu = pcfg.get("has_bu", False) if pcfg else False
+    bu_date_str = pcfg.get("bu_permission_date") if pcfg else None
 
     voucher_rows = db.get_vouchers(target_key)
-    matched = [r for r in voucher_rows if str(r.get("unit_no") or "").strip().upper() == unit_query]
+    rate_cfg = get_project_rate_config(target_key)
+    classified_rows = enrich_and_classify_vouchers(voucher_rows, has_bu, bu_date_str, rate_cfg)
+
+    def _clean(u):
+        return str(u or "").strip().upper().replace(" ", "").replace("-", "").replace("/", "")
+
+    norm_q = _clean(unit_query)
+    matched = []
+    for r in classified_rows:
+        u_val = str(r.get("unit_no") or r.get("block_no") or r.get("unit") or r.get("flat_no") or "").strip().upper()
+        if u_val == unit_query or (norm_q and _clean(u_val) == norm_q):
+            matched.append(r)
     matched.sort(key=lambda x: _voucher_date_sort_key(x.get("date")))
 
-    def _to_history_item(v):
-        return {
+    unit_meta = {}
+    try:
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            if db.is_postgres:
+                cur.execute("SELECT * FROM units WHERE project_code = %s AND (UPPER(unit_no) = %s OR UPPER(flat_label) = %s)", (target_key, unit_query, unit_query))
+            else:
+                cur.execute("SELECT * FROM units WHERE project_code = ? AND (UPPER(unit_no) = ? OR UPPER(flat_label) = ?)", (target_key, unit_query, unit_query))
+            row = cur.fetchone()
+            if row:
+                unit_meta = dict(row)
+    except Exception as e:
+        pass
+
+    history = []
+    total_receipts = 0.0
+    total_taxable_base = 0.0
+    total_tax = 0.0
+    total_exempt = 0.0
+    total_pass_through = 0.0
+    income_count = 0
+    unit_is_after_bu = False
+    unit_rate = rate_cfg.get("default_residential_rate", 0.01)
+
+    for v in matched:
+        amt = float(v.get("amount") or 0)
+        is_income = bool(v.get("_is_income"))
+        is_after_bu = bool(v.get("_is_after_bu"))
+        if is_after_bu:
+            unit_is_after_bu = True
+        pass_through = v.get("_pass_through_type")
+        taxable_amt = float(v.get("_taxable_amount") or 0.0)
+        v_tax_rate = float(v.get("_tax_rate") or unit_rate)
+        unit_rate = v_tax_rate
+
+        if is_income and not is_after_bu and taxable_amt > 0:
+            vch_tax = round(amt - taxable_amt, 2)
+            vch_cgst = round(vch_tax / 2, 2)
+            vch_sgst = round(vch_tax - vch_cgst, 2)
+        else:
+            vch_tax = 0.0
+            vch_cgst = 0.0
+            vch_sgst = 0.0
+
+        if is_income:
+            total_receipts += amt
+            total_taxable_base += taxable_amt
+            total_tax += vch_tax
+            income_count += 1
+        if is_after_bu:
+            total_exempt += amt
+        if pass_through:
+            total_pass_through += amt
+
+        v_type = "Member Receipt" if is_income else (
+            "Excluded by CA" if v.get("_badge_type") == "excluded_manual" else (
+                "Non-GST Pass-Through" if v.get("_badge_type") == "pass_through" else (
+                    "Vendor / Creditor" if v.get("_is_creditor") else (
+                        "Cancelled / Refunded" if v.get("_is_cancelled") else "Purchase / Expense"
+                    )
+                )
+            )
+        )
+
+        history.append({
             "date": v.get("date"),
             "vch_no": v.get("voucher_number"),
             "party_name": v.get("party_name"),
-            "amount": float(v.get("amount") or 0),
-            "classification": v.get("classification"),
-            "narration": v.get("narration"),
-            "is_exempt": bool(v.get("is_exempt"))
-        }
+            "party_original": v.get("party_original"),
+            "amount": amt,
+            "taxable_amount": taxable_amt,
+            "tax_rate": v_tax_rate,
+            "tax_rate_pct": round(v_tax_rate * 100, 2),
+            "cgst": vch_cgst,
+            "sgst": vch_sgst,
+            "total_tax": vch_tax,
+            "is_exempt": is_after_bu,
+            "is_income": is_income,
+            "classification": v.get("_classification"),
+            "badge_type": v.get("_badge_type"),
+            "type": v_type,
+            "narration": v.get("narration") or "",
+            "has_override": bool(v.get("_has_override")),
+            "override_bu_status": v.get("override_bu_status"),
+            "override_is_income": v.get("override_is_income"),
+            "override_rate": v.get("override_rate"),
+            "override_note": v.get("override_note")
+        })
 
-    history = [_to_history_item(v) for v in matched]
     genuine_vouchers, cancelled_vouchers = _split_genuine_and_cancelled(matched)
 
     owners = []
@@ -1563,13 +1660,25 @@ def api_unit_history():
             seen_owner.add(name)
             owners.append(name)
 
-    # Group into ownership periods: a new period starts whenever the paying party changes
     ownership_periods = []
     for v in genuine_vouchers:
         name = (v.get("party_name") or "").strip() or "Unknown"
         if not ownership_periods or ownership_periods[-1]["owner"] != name:
             ownership_periods.append({"owner": name, "_vouchers": []})
         ownership_periods[-1]["_vouchers"].append(v)
+
+    def _to_history_item(v):
+        amt = float(v.get("amount") or 0)
+        return {
+            "date": v.get("date"),
+            "vch_no": v.get("voucher_number"),
+            "party_name": v.get("party_name"),
+            "amount": amt,
+            "taxable_amount": float(v.get("_taxable_amount") or 0.0),
+            "classification": v.get("_classification"),
+            "narration": v.get("narration"),
+            "is_exempt": bool(v.get("_is_after_bu"))
+        }
 
     for idx, p in enumerate(ownership_periods):
         vs = p["_vouchers"]
@@ -1595,20 +1704,43 @@ def api_unit_history():
                 "narration": v.get("narration")
             })
 
-    genuine_total = sum(float(v.get("amount") or 0) for v in genuine_vouchers)
-    cancelled_total = sum(float(v.get("amount") or 0) for v in cancelled_vouchers)
+    bu_status_label = "Exempt Post-BU (Schedule III)" if unit_is_after_bu else ("Taxable (Pre-BU)" if has_bu else "Pre-BU / Construction Phase")
+    rate_label = f"{round(unit_rate * 100, 2):g}% ({'Affordable Residential' if unit_rate <= 0.01 else 'Standard Rate'})"
 
     return jsonify({
         "status": "success",
         "project_key": target_key,
+        "project_name": project_name,
         "unit_no": unit_query,
+        "unit_meta": unit_meta,
+        "bu_status_label": bu_status_label,
+        "is_exempt": unit_is_after_bu,
+        "rate_label": rate_label,
+        "rate_pct": round(unit_rate * 100, 2),
+        "has_bu": has_bu,
+        "bu_date": bu_date_str,
+        "summary": {
+            "voucher_count": len(matched),
+            "income_count": income_count,
+            "total_receipts": total_receipts,
+            "total_taxable_base": round(total_taxable_base, 2),
+            "total_tax": round(total_tax, 2),
+            "total_cgst": round(total_tax / 2, 2),
+            "total_sgst": round(total_tax - round(total_tax / 2, 2), 2),
+            "total_exempt": round(total_exempt, 2),
+            "total_pass_through": round(total_pass_through, 2),
+            "first_date": matched[0].get("date") if matched else "—",
+            "last_date": matched[-1].get("date") if matched else "—",
+        },
         "owners": owners,
-        "payment_count": len(genuine_vouchers),
-        "total_paid": genuine_total,
+        "current_owner": owners[-1] if owners else "—",
+        "payment_count": income_count,
+        "total_paid": total_receipts,
+        "vouchers": history,
         "history": history,
         "ownership_periods": ownership_periods,
         "cancelled_bookings": cancelled_bookings,
-        "cancelled_total": cancelled_total,
+        "cancelled_total": sum(float(v.get("amount") or 0) for v in cancelled_vouchers),
         "transfer_notes": transfer_notes
     })
 

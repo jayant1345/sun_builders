@@ -1104,21 +1104,123 @@
         </section>
       </div>
 
-      <!-- Unit History Drill-down Modal -->
-      <div id="unit-history-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden">
-          <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-            <div>
-              <h3 id="unit-history-title" class="font-display text-base font-extrabold text-slate-900">Unit History</h3>
-              <p id="unit-history-subtitle" class="text-xs text-slate-500 font-medium mt-0.5">Full payment & ownership history</p>
+      <!-- Unit Details & Complete Ledger Statement Modal -->
+      <div id="unit-history-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 md:p-6">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
+          
+          <!-- Header -->
+          <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-slate-50 to-blue-50/30">
+            <div class="flex items-center gap-3">
+              <span id="unit-modal-badge" class="font-mono text-base font-extrabold text-blue-700 bg-blue-100 border border-blue-200 px-3 py-1 rounded-xl shadow-xs">
+                Unit —
+              </span>
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 id="unit-history-title" class="font-display text-lg font-extrabold text-slate-900 tracking-tight">Unit Statement & Ledger</h3>
+                  <span id="unit-modal-bu-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    Exempt Post-BU
+                  </span>
+                  <span id="unit-modal-rate-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                    1% Affordable
+                  </span>
+                </div>
+                <p id="unit-history-subtitle" class="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-2">
+                  <span id="unit-modal-project-name">Sun Footprint (010010)</span> · <span id="unit-modal-owner-name" class="font-bold text-slate-700">Member Name</span>
+                </p>
+              </div>
             </div>
-            <button id="btn-close-unit-history" type="button" class="p-2 rounded-xl hover:bg-slate-200 text-slate-500 transition-colors">
-              <span class="material-symbols-outlined text-[20px]">close</span>
-            </button>
+            <div class="flex items-center gap-2">
+              <button id="btn-print-unit-statement" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-xs transition-colors" title="Print or Save as PDF">
+                <span class="material-symbols-outlined text-[16px]">print</span>
+                <span>Print Statement</span>
+              </button>
+              <button id="btn-close-unit-history" type="button" class="p-2 rounded-xl hover:bg-slate-200 text-slate-500 transition-colors" title="Close (Esc)">
+                <span class="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
           </div>
-          <div id="unit-history-owners" class="px-5 py-3 border-b border-slate-100 flex flex-wrap gap-1.5"></div>
-          <div id="unit-history-transfer-notes" class="px-5 pt-3"></div>
-          <div id="unit-history-timeline" class="overflow-y-auto table-scrollbar flex-1 p-5 flex flex-col gap-4"></div>
+
+          <!-- Unit Metadata Ribbon & Owners list -->
+          <div class="px-6 py-2.5 bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div id="unit-history-owners" class="flex flex-wrap items-center gap-2">
+              <!-- Owner tags rendered here -->
+            </div>
+            <div id="unit-modal-specs" class="flex items-center gap-3 text-slate-500 font-mono">
+              <!-- Block, Floor, Area sqft -->
+            </div>
+          </div>
+
+          <!-- 4 Financial KPI Stat Cards -->
+          <div class="px-6 py-3.5 bg-slate-100/50 border-b border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Total Advances / Receipts</div>
+              <div id="unit-kpi-total-receipts" class="text-base font-extrabold font-mono text-slate-900 mt-0.5">₹0</div>
+              <div id="unit-kpi-count" class="text-[11px] text-slate-500 font-sans mt-0.5">0 payment vouchers</div>
+            </div>
+
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Net Taxable Base (Receipts)</div>
+              <div id="unit-kpi-taxable-base" class="text-base font-extrabold font-mono text-blue-700 mt-0.5">₹0</div>
+              <div class="text-[11px] text-slate-500 font-sans mt-0.5">Inclusive GST base</div>
+            </div>
+
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Total GST (CGST + SGST)</div>
+              <div id="unit-kpi-total-gst" class="text-base font-extrabold font-mono text-emerald-700 mt-0.5">₹0</div>
+              <div id="unit-kpi-gst-split" class="text-[11px] text-slate-500 font-mono mt-0.5">CGST: ₹0 | SGST: ₹0</div>
+            </div>
+
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Exempt / Non-GST Receipts</div>
+              <div id="unit-kpi-exempt-passthrough" class="text-base font-extrabold font-mono text-slate-700 mt-0.5">₹0</div>
+              <div id="unit-kpi-exempt-sub" class="text-[11px] text-slate-500 font-sans mt-0.5">Post-BU & Pass-Throughs</div>
+            </div>
+          </div>
+
+          <!-- Transfer / Resale Alerts (if any) -->
+          <div id="unit-history-transfer-notes" class="px-6 pt-3"></div>
+
+          <!-- Main Content Area: Search & Filter Bar + Vouchers Ledger Table -->
+          <div class="flex-1 overflow-hidden flex flex-col p-6 pt-3 min-h-0">
+            <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
+              <div class="flex items-center gap-2">
+                <span class="font-display text-sm font-bold text-slate-800">All Vouchers for this Unit</span>
+                <span id="unit-modal-voucher-count-badge" class="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200">0</span>
+              </div>
+              <div class="flex items-center gap-2 flex-1 max-w-sm">
+                <div class="relative w-full">
+                  <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
+                  <input id="unit-modal-search" type="text" placeholder="Filter by date, vch no, narration..." class="w-full bg-slate-50 border border-slate-200 text-xs rounded-xl pl-8 pr-3 py-1.5 focus:border-blue-600 focus:bg-white shadow-xs font-medium" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Detailed Vouchers Table -->
+            <div class="flex-1 overflow-y-auto table-scrollbar rounded-xl border border-slate-200 shadow-xs bg-white">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead class="sticky top-0 z-10 bg-slate-50 shadow-xs">
+                  <tr class="text-slate-600 border-b border-slate-200 font-mono uppercase tracking-wider text-[11px] font-semibold">
+                    <th class="py-2.5 px-3">Date</th>
+                    <th class="py-2.5 px-3">Vch No</th>
+                    <th class="py-2.5 px-3">Type</th>
+                    <th class="py-2.5 px-4">Account / Member Name</th>
+                    <th class="py-2.5 px-3 text-right">Amount (₹)</th>
+                    <th class="py-2.5 px-3 text-right">Taxable Base (₹)</th>
+                    <th class="py-2.5 px-3 text-right">GST (₹)</th>
+                    <th class="py-2.5 px-3">GST Classification</th>
+                    <th class="py-2.5 px-3">Narration</th>
+                    <th class="py-2.5 px-2 text-center">Edit</th>
+                  </tr>
+                </thead>
+                <tbody id="unit-modal-table-body" class="divide-y divide-slate-100 font-mono">
+                  <!-- Dynamically rendered -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Ownership Periods & Timeline (Accordion / Sub-section) -->
+            <div id="unit-history-timeline" class="mt-4 overflow-y-auto max-h-48 table-scrollbar flex flex-col gap-3"></div>
+          </div>
         </div>
       </div>
 

@@ -302,7 +302,18 @@ async function loadRealVouchers(projectKey, month, year) {
                 } else {
                     data.vouchers.forEach(v => {
                         const tr = document.createElement('tr');
-                        tr.className = 'hover:bg-primary/5 transition-colors';
+                        const unitDisplay = (v.flat_no && v.flat_no !== 'undefined') ? v.flat_no : ((v.unit && v.unit !== 'undefined') ? v.unit : '—');
+                        const memberDisplay = (v.member_name && v.member_name !== 'undefined') ? v.member_name : ((v.name && v.name !== 'undefined') ? v.name : 'Member');
+                        const hasUnit = unitDisplay && unitDisplay !== '—';
+
+                        tr.className = `hover:bg-primary/10 transition-colors ${hasUnit ? 'cursor-pointer' : ''}`;
+                        if (hasUnit) {
+                            tr.setAttribute('title', `Click to view full records & statement for Unit ${unitDisplay}`);
+                            tr.addEventListener('click', (e) => {
+                                if (e.target.closest('.btn-edit-override')) return;
+                                openUnitHistory(data.company_code || '010010', unitDisplay);
+                            });
+                        }
                         
                         let badgeHtml = '';
                         if (v.badge_type === 'bu_review') {
@@ -328,15 +339,14 @@ async function loadRealVouchers(projectKey, month, year) {
                         }
 
                         const formattedCr = Number(v.cr_amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-                        
-                        const unitDisplay = (v.flat_no && v.flat_no !== 'undefined') ? v.flat_no : ((v.unit && v.unit !== 'undefined') ? v.unit : '—');
-                        const memberDisplay = (v.member_name && v.member_name !== 'undefined') ? v.member_name : ((v.name && v.name !== 'undefined') ? v.name : 'Member');
                         const pencilClass = v.has_override ? 'text-blue-600' : 'text-slate-300 hover:text-slate-500';
 
                         tr.innerHTML = `
                             <td class="py-2.5 px-3 text-on-surface">${v.date}</td>
                             <td class="py-2.5 px-3 text-primary font-semibold font-mono">${v.vch_no}</td>
-                            <td class="py-2.5 px-3 font-mono font-bold text-secondary bg-secondary/10 px-2 py-0.5 rounded border border-secondary/20 inline-block my-1.5">${unitDisplay}</td>
+                            <td class="py-2.5 px-3 font-mono font-bold">
+                                <span class="text-secondary bg-secondary/10 hover:bg-secondary/20 hover:scale-105 transition-all px-2.5 py-1 rounded border border-secondary/20 inline-block my-1 ${hasUnit ? 'cursor-pointer shadow-xs' : ''}" title="${hasUnit ? 'Click to view full statement for Unit ' + unitDisplay : ''}">${unitDisplay}</span>
+                            </td>
                             <td class="py-2.5 px-4 font-sans text-on-surface font-medium">${memberDisplay}</td>
                             <td class="py-2.5 px-3 text-on-surface-variant font-sans">${v.project}</td>
                             <td class="py-2.5 px-3 text-on-surface-variant font-sans">${v.type}</td>
@@ -348,7 +358,10 @@ async function loadRealVouchers(projectKey, month, year) {
                                 </button>
                             </td>
                         `;
-                        tr.querySelector('.btn-edit-override').addEventListener('click', () => openOverrideModal(v));
+                        tr.querySelector('.btn-edit-override').addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            openOverrideModal(v);
+                        });
                         tbody.appendChild(tr);
                     });
                 }
@@ -611,48 +624,117 @@ function renderUnitsTable() {
     });
 }
 
+let currentActiveUnitModal = null;
+let currentUnitVouchersList = [];
+
 async function openUnitHistory(projectKey, unitNo) {
+    if (!unitNo || unitNo === '—' || unitNo === 'undefined') return;
+    currentActiveUnitModal = { projectKey, unitNo };
+
     const modal = document.getElementById('unit-history-modal');
+    const badgeEl = document.getElementById('unit-modal-badge');
     const title = document.getElementById('unit-history-title');
-    const subtitle = document.getElementById('unit-history-subtitle');
+    const projEl = document.getElementById('unit-modal-project-name');
+    const ownerEl = document.getElementById('unit-modal-owner-name');
+    const buBadge = document.getElementById('unit-modal-bu-badge');
+    const rateBadge = document.getElementById('unit-modal-rate-badge');
+    const specsEl = document.getElementById('unit-modal-specs');
     const ownersBox = document.getElementById('unit-history-owners');
     const notesBox = document.getElementById('unit-history-transfer-notes');
+    const tableBody = document.getElementById('unit-modal-table-body');
+    const vchCountBadge = document.getElementById('unit-modal-voucher-count-badge');
+    const searchInput = document.getElementById('unit-modal-search');
     const timeline = document.getElementById('unit-history-timeline');
 
-    if (title) title.textContent = `Unit ${unitNo}`;
-    if (subtitle) subtitle.textContent = 'Loading history...';
+    if (badgeEl) badgeEl.textContent = `Unit ${unitNo}`;
+    if (title) title.textContent = `Unit ${unitNo} Statement & Ledger`;
+    if (projEl) projEl.textContent = `Project ${projectKey}`;
+    if (ownerEl) ownerEl.textContent = 'Loading...';
     if (ownersBox) ownersBox.innerHTML = '';
     if (notesBox) notesBox.innerHTML = '';
-    if (timeline) timeline.innerHTML = `<div class="text-center py-6 text-slate-400 font-sans text-xs">Loading...</div>`;
+    if (tableBody) tableBody.innerHTML = `<tr><td colspan="10" class="text-center py-8 text-slate-400 font-sans">Loading all records for Unit ${unitNo}...</td></tr>`;
+    if (timeline) timeline.innerHTML = '';
+    if (searchInput) searchInput.value = '';
+
     if (modal) modal.classList.remove('hidden');
 
     try {
         const resp = await fetch(`/api/units/history?project=${encodeURIComponent(projectKey)}&unit=${encodeURIComponent(unitNo)}`);
         const data = await resp.json();
-        if (data.status !== 'success') return;
-
-        if (subtitle) {
-            const totalFmt = Number(data.total_paid || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-            const ownerCount = (data.owners || []).length;
-            subtitle.textContent = `${data.payment_count} payment(s) · ₹${totalFmt} total · ${ownerCount} owner${ownerCount === 1 ? '' : 's'} on record`;
+        if (data.status !== 'success') {
+            if (tableBody) tableBody.innerHTML = `<tr><td colspan="10" class="text-center py-6 text-red-500 font-sans">${data.message || 'Error loading unit data'}</td></tr>`;
+            return;
         }
 
+        // Header updates
+        if (badgeEl) badgeEl.textContent = `Unit ${data.unit_no}`;
+        if (title) title.textContent = `Unit ${data.unit_no} Statement & History`;
+        if (projEl) projEl.textContent = `${data.project_name} (${data.project_key})`;
+        if (ownerEl) ownerEl.textContent = data.current_owner || (data.owners && data.owners.length ? data.owners[data.owners.length - 1] : 'Member');
+
+        if (buBadge) {
+            if (data.is_exempt) {
+                buBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200';
+                buBadge.textContent = 'Exempt Post-BU (Schedule III)';
+            } else {
+                buBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200';
+                buBadge.textContent = data.bu_status_label || 'Taxable (Pre-BU)';
+            }
+        }
+
+        if (rateBadge) {
+            rateBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200';
+            rateBadge.textContent = data.rate_label || `${data.rate_pct}% Rate`;
+        }
+
+        if (specsEl) {
+            const m = data.unit_meta || {};
+            const parts = [];
+            if (m.block) parts.push(`Block: ${m.block}`);
+            if (m.floor) parts.push(`Floor: ${m.floor}`);
+            if (m.usage_type) parts.push(`Type: ${m.usage_type}`);
+            if (m.size_sqft) parts.push(`Super: ${Number(m.size_sqft).toLocaleString('en-IN')} sqft`);
+            if (m.carpet_sqft) parts.push(`Carpet: ${Number(m.carpet_sqft).toLocaleString('en-IN')} sqft`);
+            specsEl.innerHTML = parts.length ? parts.map(p => `<span>${p}</span>`).join(' · ') : `<span>Unit ${data.unit_no}</span>`;
+        }
+
+        // Financial KPI Cards
+        const sm = data.summary || {};
+        const kpiReceipts = document.getElementById('unit-kpi-total-receipts');
+        const kpiCount = document.getElementById('unit-kpi-count');
+        const kpiTaxable = document.getElementById('unit-kpi-taxable-base');
+        const kpiGst = document.getElementById('unit-kpi-total-gst');
+        const kpiGstSplit = document.getElementById('unit-kpi-gst-split');
+        const kpiExempt = document.getElementById('unit-kpi-exempt-passthrough');
+        const kpiExemptSub = document.getElementById('unit-kpi-exempt-sub');
+
+        if (kpiReceipts) kpiReceipts.textContent = '₹' + Number(sm.total_receipts || data.total_paid || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        if (kpiCount) kpiCount.textContent = `${sm.income_count || data.payment_count || 0} Member Receipts (${(data.vouchers || []).length} total records)`;
+        if (kpiTaxable) kpiTaxable.textContent = '₹' + Number(sm.total_taxable_base || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        if (kpiGst) kpiGst.textContent = '₹' + Number(sm.total_tax || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        if (kpiGstSplit) kpiGstSplit.textContent = `CGST: ₹${Number(sm.total_cgst || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} | SGST: ₹${Number(sm.total_sgst || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+        
+        const exemptPassTotal = (sm.total_exempt || 0) + (sm.total_pass_through || 0);
+        if (kpiExempt) kpiExempt.textContent = '₹' + Number(exemptPassTotal).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        if (kpiExemptSub) kpiExemptSub.textContent = `Post-BU: ₹${Number(sm.total_exempt || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} | Pass: ₹${Number(sm.total_pass_through || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+
+        // Owners Ribbon
         if (ownersBox) {
             ownersBox.innerHTML = (data.owners && data.owners.length)
-                ? data.owners.map((o, i) => `<span class="px-2.5 py-1 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200 font-semibold">${i + 1}. ${o}</span>`).join('')
-                : `<span class="text-xs text-slate-400 font-sans">No ownership records found for this unit yet.</span>`;
+                ? data.owners.map((o, i) => `<span class="px-2.5 py-1 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200 font-semibold flex items-center gap-1.5"><span class="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">${i + 1}</span> ${o}</span>`).join('')
+                : `<span class="text-xs text-slate-400 font-sans">No ownership records found for this unit.</span>`;
         }
 
+        // Transfer / Cancelled Booking Notes
         if (notesBox) {
             let boxesHtml = '';
-
             if (data.cancelled_bookings && data.cancelled_bookings.length) {
                 const cancelledTotalFmt = Number(data.cancelled_total || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
                 boxesHtml += `
                     <div class="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 mb-2">
-                        <div class="flex items-center gap-1.5 text-red-800 text-xs font-bold mb-1.5">
+                        <div class="flex items-center gap-1.5 text-red-800 text-xs font-bold mb-1">
                             <span class="material-symbols-outlined text-[16px]">cancel</span>
-                            Cancelled / voided booking(s) — excluded from ownership timeline and totals (₹${cancelledTotalFmt})
+                            Cancelled / voided booking(s) — excluded from totals (₹${cancelledTotalFmt})
                         </div>
                         <div class="flex flex-col gap-1">
                             ${data.cancelled_bookings.map(b => `
@@ -667,13 +749,12 @@ async function openUnitHistory(projectKey, unitNo) {
                     </div>
                 `;
             }
-
             if (data.transfer_notes && data.transfer_notes.length) {
                 boxesHtml += `
-                    <div class="rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5">
-                        <div class="flex items-center gap-1.5 text-amber-800 text-xs font-bold mb-1.5">
+                    <div class="rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5 mb-2">
+                        <div class="flex items-center gap-1.5 text-amber-800 text-xs font-bold mb-1">
                             <span class="material-symbols-outlined text-[16px]">info</span>
-                            Possible transfer / NOC-related entries found in voucher narration
+                            Transfer / NOC / Resale remarks found in voucher narration
                         </div>
                         <div class="flex flex-col gap-1">
                             ${data.transfer_notes.map(n => `
@@ -688,79 +769,146 @@ async function openUnitHistory(projectKey, unitNo) {
                     </div>
                 `;
             }
-
             notesBox.innerHTML = boxesHtml;
         }
 
+        // Store vouchers for in-modal search & render table
+        currentUnitVouchersList = data.vouchers || [];
+        if (vchCountBadge) vchCountBadge.textContent = currentUnitVouchersList.length;
+
+        renderUnitVouchersTable(currentUnitVouchersList, data.project_key);
+
+        // Setup live search within modal
+        if (searchInput) {
+            searchInput.oninput = (e) => {
+                const q = (e.target.value || '').toLowerCase().trim();
+                if (!q) {
+                    renderUnitVouchersTable(currentUnitVouchersList, data.project_key);
+                } else {
+                    const filtered = currentUnitVouchersList.filter(v =>
+                        (v.date || '').toLowerCase().includes(q) ||
+                        (v.vch_no || '').toLowerCase().includes(q) ||
+                        (v.party_name || '').toLowerCase().includes(q) ||
+                        (v.narration || '').toLowerCase().includes(q) ||
+                        (v.classification || '').toLowerCase().includes(q) ||
+                        String(v.amount || '').includes(q)
+                    );
+                    renderUnitVouchersTable(filtered, data.project_key);
+                }
+            };
+        }
+
+        // Ownership periods timeline (if resale/multiple owners)
         if (timeline) {
             const periods = data.ownership_periods || [];
-            if (periods.length === 0) {
-                timeline.innerHTML = `<div class="text-center py-8 text-slate-400 font-sans">
-                    <div class="flex flex-col items-center justify-center gap-1.5">
-                        <span class="material-symbols-outlined text-[28px] text-slate-300">receipt_long</span>
-                        <span class="font-bold text-slate-600 text-sm">No payments recorded for this unit yet</span>
+            if (periods.length > 1) {
+                timeline.innerHTML = `
+                    <div class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1 pt-2 border-t border-slate-200">
+                        <span class="material-symbols-outlined text-[16px] text-blue-600">history_edu</span>
+                        Ownership Transfer & Resale Timeline (${periods.length} Owners)
                     </div>
-                </div>`;
-            } else {
-                timeline.innerHTML = periods.map((p, idx) => {
-                    const totalFmt = Number(p.total_paid || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-                    const rangeText = p.start_date === p.end_date ? (p.start_date || '—') : `${p.start_date || '—'} → ${p.end_date || '—'}`;
-                    const voucherRows = p.vouchers.map(v => {
-                        const amtFmt = Number(v.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+                    ${periods.map((p, idx) => {
+                        const totalFmt = Number(p.total_paid || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+                        const rangeText = p.start_date === p.end_date ? (p.start_date || '—') : `${p.start_date || '—'} → ${p.end_date || '—'}`;
                         return `
-                            <tr>
-                                <td class="py-1.5 px-2 text-on-surface">${v.date || '—'}</td>
-                                <td class="py-1.5 px-2 text-primary font-semibold">${v.vch_no || '—'}</td>
-                                <td class="py-1.5 px-2 text-right text-on-surface font-semibold">₹${amtFmt}</td>
-                                <td class="py-1.5 px-2 font-sans text-xs text-on-surface-variant">${v.classification || '—'}</td>
-                                <td class="py-1.5 px-2 font-sans text-[11px] text-on-surface-variant">${v.narration || '—'}</td>
-                            </tr>
-                        `;
-                    }).join('');
-
-                    const divider = idx > 0 ? `
-                        <div class="flex items-center gap-2 -my-1.5">
-                            <div class="flex-1 border-t border-dashed border-slate-300"></div>
-                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                <span class="material-symbols-outlined text-[14px]">sync_alt</span> Ownership Transferred
-                            </span>
-                            <div class="flex-1 border-t border-dashed border-slate-300"></div>
-                        </div>
-                    ` : '';
-
-                    return `
-                        ${divider}
-                        <div class="rounded-xl border border-slate-200 overflow-hidden">
-                            <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                            <div class="rounded-xl border border-slate-200 p-3 bg-slate-50 flex items-center justify-between flex-wrap gap-2 text-xs">
                                 <div class="flex items-center gap-2">
-                                    <span class="w-6 h-6 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">${p.sequence}</span>
-                                    <span class="font-display text-sm font-extrabold text-slate-900">${p.owner}</span>
-                                    <span class="text-[11px] text-slate-500 font-mono">${rangeText}</span>
+                                    <span class="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">${p.sequence}</span>
+                                    <span class="font-bold text-slate-900">${p.owner}</span>
+                                    <span class="text-slate-500 font-mono text-[11px]">${rangeText}</span>
                                 </div>
-                                <div class="text-xs font-mono font-bold text-slate-700">
-                                    ₹${totalFmt} <span class="text-slate-400 font-medium">(${p.payment_count} payment${p.payment_count === 1 ? '' : 's'})</span>
+                                <div class="font-mono font-bold text-slate-700">
+                                    ₹${totalFmt} <span class="text-slate-400 font-medium">(${p.payment_count} payments)</span>
                                 </div>
                             </div>
-                            <table class="w-full text-left border-collapse text-xs">
-                                <thead>
-                                    <tr class="text-slate-400 border-b border-slate-100 font-mono uppercase tracking-wider text-[10px]">
-                                        <th class="py-1.5 px-2">Date</th>
-                                        <th class="py-1.5 px-2">Vch No</th>
-                                        <th class="py-1.5 px-2 text-right">Amount (₹)</th>
-                                        <th class="py-1.5 px-2">Classification</th>
-                                        <th class="py-1.5 px-2">Narration</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100 font-mono">${voucherRows}</tbody>
-                            </table>
-                        </div>
-                    `;
-                }).join('');
+                        `;
+                    }).join('')}
+                `;
+            } else {
+                timeline.innerHTML = '';
             }
         }
+
     } catch (err) {
-        if (timeline) timeline.innerHTML = `<div class="text-center py-6 text-red-500 font-sans text-xs">Failed to load history: ${err.message}</div>`;
+        if (tableBody) tableBody.innerHTML = `<tr><td colspan="10" class="text-center py-6 text-red-500 font-sans">Error loading history: ${err.message}</td></tr>`;
     }
+}
+
+function renderUnitVouchersTable(vouchers, projectCode) {
+    const tableBody = document.getElementById('unit-modal-table-body');
+    if (!tableBody) return;
+
+    if (!vouchers || vouchers.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="10" class="text-center py-8 text-slate-400 font-sans">No vouchers found matching the filter</td></tr>`;
+        return;
+    }
+
+    tableBody.innerHTML = vouchers.map((v, idx) => {
+        let badgeHtml = '';
+        if (v.badge_type === 'bu_review') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-orange-500/10 text-orange-600 border border-orange-500/30 font-medium">⚠ ${v.classification}</span>`;
+        } else if (v.badge_type === 'review') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-500/10 text-red-600 border border-red-500/30 font-medium">⚠ ${v.classification}</span>`;
+        } else if (v.badge_type === 'excluded_manual') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-purple-500/10 text-purple-600 border border-purple-500/30 font-medium">✎ ${v.classification}</span>`;
+        } else if (v.badge_type === 'pass_through') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-sky-500/10 text-sky-600 border border-sky-500/30 font-medium">${v.classification}</span>`;
+        } else if (v.badge_type === 'creditor' || v.badge_type === 'expense') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-slate-400/10 text-slate-500 border border-slate-400/30 font-medium">${v.classification}</span>`;
+        } else if (v.badge_type === 'cancelled') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-400/10 text-red-500 border border-red-400/30 font-medium line-through">${v.classification}</span>`;
+        } else if (v.badge_type === 'exempt' || (v.classification && v.classification.toLowerCase().includes('exempt'))) {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-secondary/10 text-secondary border border-secondary/30 font-medium">${v.classification}</span>`;
+        } else if (v.badge_type === 'taxable-5' || (v.classification && v.classification.includes('5%'))) {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-500 border border-amber-500/30 font-medium">${v.classification}</span>`;
+        } else if (v.badge_type === 'taxable-1' || (v.classification && v.classification.includes('1%'))) {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/30 font-medium">${v.classification}</span>`;
+        } else {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-surface-container text-on-surface border border-outline-variant font-medium">${v.classification}</span>`;
+        }
+
+        const amtFmt = Number(v.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        const taxBaseFmt = Number(v.taxable_amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        const gstFmt = Number(v.total_tax || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        const pencilClass = v.has_override ? 'text-blue-600' : 'text-slate-300 hover:text-slate-500';
+
+        return `
+            <tr class="hover:bg-slate-50/80 transition-colors">
+                <td class="py-2.5 px-3 text-on-surface">${v.date || '—'}</td>
+                <td class="py-2.5 px-3 text-primary font-bold font-mono">${v.vch_no || '—'}</td>
+                <td class="py-2.5 px-3 font-sans text-xs text-on-surface-variant font-medium">${v.type || 'Receipt'}</td>
+                <td class="py-2.5 px-4 font-sans text-on-surface font-medium">${v.party_name || '—'}</td>
+                <td class="py-2.5 px-3 text-right text-on-surface font-bold font-mono">₹${amtFmt}</td>
+                <td class="py-2.5 px-3 text-right text-blue-700 font-semibold font-mono">₹${taxBaseFmt}</td>
+                <td class="py-2.5 px-3 text-right text-emerald-700 font-semibold font-mono">₹${gstFmt}</td>
+                <td class="py-2.5 px-3 font-sans">${badgeHtml}</td>
+                <td class="py-2.5 px-3 font-sans text-[11px] text-on-surface-variant max-w-xs truncate" title="${(v.narration || '').replace(/"/g, '&quot;')}">${v.narration || '—'}</td>
+                <td class="py-2.5 px-2 text-center">
+                    <button type="button" data-index="${idx}" class="btn-unit-modal-edit p-1 rounded hover:bg-slate-200 transition-colors ${pencilClass}" title="Edit classification">
+                        <span class="material-symbols-outlined text-[16px]">edit</span>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    // Attach edit button listeners inside unit modal
+    const editButtons = tableBody.querySelectorAll('.btn-unit-modal-edit');
+    editButtons.forEach(btn => {
+        const idx = parseInt(btn.getAttribute('data-index'), 10);
+        const v = vouchers[idx];
+        if (v) {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openOverrideModal({
+                    ...v,
+                    cr_amount: v.amount,
+                    flat_no: currentActiveUnitModal ? currentActiveUnitModal.unitNo : '',
+                    project: projectCode
+                });
+            });
+        }
+    });
 }
 
 let currentOverrideVoucher = null;
@@ -834,6 +982,9 @@ async function saveVoucherOverride(clearAll) {
         }
         closeOverrideModal();
         await loadRealVouchers(projectCode);
+        if (currentActiveUnitModal) {
+            await openUnitHistory(currentActiveUnitModal.projectKey, currentActiveUnitModal.unitNo);
+        }
     } catch (err) {
         alert('Network error saving override: ' + err.message);
     } finally {
@@ -1847,6 +1998,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target === unitHistoryModal) unitHistoryModal.classList.add('hidden');
         });
     }
+    const btnPrintStatement = document.getElementById('btn-print-unit-statement');
+    if (btnPrintStatement) {
+        btnPrintStatement.addEventListener('click', () => {
+            window.print();
+        });
+    }
+
+    // Escape key closes modals
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.getElementById('unit-history-modal')?.classList.add('hidden');
+            closeOverrideModal();
+        }
+    });
 
     // Voucher classification override modal
     const btnCloseOverride = document.getElementById('btn-close-override-modal');
