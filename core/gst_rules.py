@@ -3,8 +3,8 @@ from datetime import datetime
 
 CREDITOR_KEYWORDS = [
     r'\bcreditor\b', r'\bvendor\b', r'\bsupplier\b', r'\bcontractor\b', r'\bsubcontractor\b',
-    r'\bpurchase\b', r'\bmaterial\b', r'\belectric\b', r'\belectricity\b', r'\bcable\b', r'\bnotary\b',
-    r'\bstamp duty\b', r'\bregistration\b', r'\breg fee\b', r'\bsale deed\b', r'\bsales deed\b', r'\bats\b',
+    r'\bpurchase\b', r'\bmaterial\b', r'\belectric\b', r'\belectricity\b', r'\blight bill\b', r'\bcable\b', r'\bnotary\b',
+    r'\bstamp duty\b', r'\bregistration\b', r'\breg(?:n|istration)?\.?\s*fee\b', r'\bsale deed\b', r'\bsales deed\b', r'\bats\b',
     r'\bmaintenance\b', r'\bmaintanance\b', r'\bauda\b', r'\baec\b', r'\btorrent\b',
     r'\bconsultant\b', r'\bprofessional fee\b', r'\blegal fee\b', r'\baudit fee\b', r'\bbank charges\b',
     r'\bcourier\b', r'\bprinting\b', r'\bstationery\b', r'\bfreight\b', r'\btransport\b', r'\broadlines\b', r'\blogistics\b',
@@ -13,11 +13,15 @@ CREDITOR_KEYWORDS = [
     r'\bcorporation\b', r'\benterprises\b', r'\btraders\b', r'\bbuildcon\b', r'\binfra\b', r'\bagency\b', r'\bagencies\b',
     r'\bgas\b', r'\bgujarat gas\b', r'\bhardware\b', r'\bplywood\b', r'\bglass\b', r'\baluminium\b', r'\baluminum\b', r'\biron\b',
     r'\br\.m\.c\b', r'\brmc\b', r'\breadymix\b', r'\bconcrete\b', r'\bearthmovers\b', r'\bexcavation\b', r'\bcrane\b', r'\bbank coll\b',
-    r'\baxis bank\b', r'\bicici bank\b', r'\bhdfc bank\b', r'\bsbi\b'
+    r'\baxis bank\b', r'\bicici bank\b', r'\bhdfc bank\b', r'\bsbi\b',
+    # Refundable / security deposits are held in trust, not part of sale consideration (CA's own
+    # 5-category non-GST exclusion list). "Refund"/"refundable"/"refundale" (common typo) all match.
+    r'\brefund', r'\bsecurity deposit\b', r'\bmember deposit\b',
 ]
 
 def is_creditor_party(party_str: str, raw_name: str = "", narr: str = "") -> bool:
-    """Returns True if party name or narration indicates a vendor/creditor/contractor."""
+    """Returns True if party name or narration indicates a vendor/creditor/contractor,
+    or a non-GST pass-through (stamp duty, registration fee, refundable deposit, etc.)."""
     combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
     for kw in CREDITOR_KEYWORDS:
         if re.search(kw, combined):
@@ -26,11 +30,62 @@ def is_creditor_party(party_str: str, raw_name: str = "", narr: str = "") -> boo
 
 def is_after_bu_member(party_str: str, raw_name: str = "", narr: str = "") -> bool:
     """
-    Returns True if member ledger/narration contains 'After BU' or variations ('Af Bu', 'Afterbu'),
-    indicating flat purchased after BU permission (Schedule III Entry 5 - 0% GST).
+    Returns True if member ledger/narration contains 'After BU' or variations ('Af Bu', 'Aft Bu',
+    'Aftr Bu', 'Afterbu'), indicating flat purchased after BU permission (Schedule III Entry 5 - 0% GST).
+    This is a text-based backup signal only - the authoritative test is the voucher's own date vs.
+    the project's BU permission date (see is_post_bu below), since not every post-BU ledger was
+    manually tagged, and spelling varies ('Aftr Bu' typo, etc).
     """
     combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
-    return bool(re.search(r'(?:after|aft|af)\s*[\-_]?\s*bu\b', combined) or 'afterbu' in combined)
+    return bool(re.search(r'(?:after|aftr|aft|af)\s*[\-_]?\s*bu\b', combined) or 'afterbu' in combined)
+
+def is_cancelled_booking(party_str: str, raw_name: str = "", narr: str = "") -> bool:
+    """Returns True if the party name or narration indicates a booking that was cancelled/voided
+    and refunded - e.g. a party name suffixed '-CANCELLED', or a refund voucher's narration
+    mentioning 'cancellation'/'cancelleation' (a common misspelling seen in this data) even when
+    the party name itself carries no CANCELLED tag. A fallen-through booking was never genuine
+    sale consideration and must not be taxed as income."""
+    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
+    return 'cancel' in combined
+
+def is_plausible_receipt_amount(amount: float, min_amount: float = 100.0, max_amount: float = 10000000.0) -> bool:
+    """Sanity-checks a single voucher amount as a genuine flat/shop owner installment or full
+    payment. Real per-voucher owner receipts in this data range from a few hundred rupees up to
+    roughly the price of one unit; amounts below min_amount are data-entry artifacts (e.g. Rs.1,
+    Rs.4 placeholder rows) and amounts above max_amount (default Rs.1 Crore - well above this
+    project's own 'Affordable Residential <= Rs.45L' threshold, with headroom for a full-cash
+    higher-value unit) are not a plausible single owner payment and are far more likely to be a
+    non-receipt entry (e.g. a sale-deed/agreement value booked as a journal entry) swept in because
+    Tally's VOUCHERTYPENAME isn't filtered. Such amounts are excluded from taxable income and
+    flagged for manual CA review rather than being silently taxed or silently dropped."""
+    return min_amount <= amount <= max_amount
+
+def parse_voucher_date(date_str):
+    """Parses a voucher date stored as 'DD-MM-YYYY' (this app's live-sync format)."""
+    try:
+        return datetime.strptime(str(date_str or "").strip(), "%d-%m-%Y")
+    except Exception:
+        return None
+
+def is_voucher_after_bu_date(voucher_date_str: str, has_bu: bool, bu_permission_date_str: str) -> bool:
+    """Tests whether a given voucher date falls after the project's BU permission date.
+    bu_permission_date_str is expected as 'YYYY-MM-DD' (as stored in project config);
+    voucher_date_str is 'DD-MM-YYYY'. Returns False if the project has no BU yet, or either
+    date fails to parse (never silently exempts on bad data). Callers should generally pass
+    a UNIT's earliest payment date here (see compute_unit_bu_status in server.py), not an
+    individual installment's own date - Schedule III Entry 5 exemption depends on whether
+    the unit's sale agreement predates BU, not on when each later installment happens to
+    be paid."""
+    if not has_bu or not bu_permission_date_str:
+        return False
+    v_dt = parse_voucher_date(voucher_date_str)
+    if not v_dt:
+        return False
+    try:
+        bu_dt = datetime.strptime(str(bu_permission_date_str).strip(), "%Y-%m-%d")
+    except Exception:
+        return False
+    return v_dt > bu_dt
 
 def calculate_inclusive_tax(amount: float, rate: float = 0.01) -> dict:
     """

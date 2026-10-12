@@ -305,7 +305,15 @@ async function loadRealVouchers(projectKey, month, year) {
                         tr.className = 'hover:bg-primary/5 transition-colors';
                         
                         let badgeHtml = '';
-                        if (v.badge_type === 'exempt' || (v.classification && v.classification.toLowerCase().includes('exempt'))) {
+                        if (v.badge_type === 'bu_review') {
+                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-orange-500/10 text-orange-600 border border-orange-500/30 font-medium">⚠ ${v.classification}</span>`;
+                        } else if (v.badge_type === 'review') {
+                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-500/10 text-red-600 border border-red-500/30 font-medium">⚠ ${v.classification}</span>`;
+                        } else if (v.badge_type === 'creditor' || v.badge_type === 'expense') {
+                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-slate-400/10 text-slate-500 border border-slate-400/30 font-medium">${v.classification}</span>`;
+                        } else if (v.badge_type === 'cancelled') {
+                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-400/10 text-red-500 border border-red-400/30 font-medium line-through">${v.classification}</span>`;
+                        } else if (v.badge_type === 'exempt' || (v.classification && v.classification.toLowerCase().includes('exempt'))) {
                             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-secondary/10 text-secondary border border-secondary/30 font-medium">${v.classification}</span>`;
                         } else if (v.badge_type === 'taxable-5' || (v.classification && v.classification.includes('5%'))) {
                             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/30 font-medium">${v.classification}</span>`;

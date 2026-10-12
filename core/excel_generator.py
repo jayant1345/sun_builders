@@ -4,7 +4,6 @@ import shutil
 import calendar
 from datetime import datetime
 import openpyxl
-from core.gst_rules import is_creditor_party, is_after_bu_member
 
 class ExcelGenerator:
     """
@@ -112,10 +111,13 @@ class ExcelGenerator:
     def _populate_footprint_sheet(self, wb, vouchers):
         """
         Populates SUN REALTY FOOTPRINT- MEMBERS with actual target month vouchers.
-        Follows CA directives:
-        1. Creditors/vendors strictly excluded.
+        Follows CA directives, using the classification server.py's enrich_and_classify_vouchers
+        already computed per voucher (_is_income, _is_after_bu, _tax_rate), rather than
+        re-deriving it here - this is what keeps the generated Excel in sync with the dashboard:
+        1. Creditors/vendors/non-GST pass-throughs/cancelled bookings/implausible amounts excluded.
         2. Flats purchased after BU permission are 0% GST (Completely Exempt).
-        3. Tax on Before-BU advances calculated considering the receipt as inclusive of tax base.
+        3. Tax on Before-BU advances calculated considering the receipt as inclusive of tax base,
+           at the rate slab (1%/5%) that unit's total consideration actually falls into.
         """
         sheet_name = "SUN REALTY FOOTPRINT- MEMBERS"
         if sheet_name not in wb.sheetnames:
@@ -166,28 +168,28 @@ class ExcelGenerator:
 
         for v in vouchers:
             party = str(v.get("party_name") or v.get("name") or v.get("member_name") or "").strip()
-            orig = str(v.get("party_original") or v.get("raw_name") or "").strip()
-            narr = str(v.get("narration") or "").strip()
 
-            # Strictly exclude creditors, vendors, suppliers, contractors and pass-through bank entries
-            if is_creditor_party(party) or is_creditor_party(orig) or is_creditor_party(narr):
-                continue
-            if not v.get("is_income", True):
+            # Classification (creditor/cancelled/implausible-amount exclusion, After-BU exemption,
+            # and the 1%/5% rate slab) is computed once, upstream, by server.py's
+            # enrich_and_classify_vouchers - use it here instead of re-deriving it, so this file
+            # can never silently drift from what the dashboard shows.
+            if not v.get("_is_income", v.get("is_income", True)):
                 continue
 
             unit = str(v.get("unit_no") or v.get("unit") or v.get("flat_no") or "").strip()
             amt = float(v.get("cr_amount") or v.get("amount") or 0)
             reg_fee = float(v.get("reg_fee") or 0)
             stamp_duty = float(v.get("stamp_duty") or 0)
+            unit_rate = float(v.get("_tax_rate") or 0.01)
 
-            unit_is_after_bu = is_after_bu_member(party, orig, narr)
+            unit_is_after_bu = bool(v.get("_is_after_bu"))
             if unit_is_after_bu:
                 total_after_bu_exempt += max(0.0, amt - reg_fee - stamp_duty)
 
             # Check if residential or commercial
             if re.match(r'^[A-Za-z]\s*[\-_/]', unit):
                 if unit not in res_units:
-                    res_units[unit] = {"unit": unit, "party": party, "amount": 0.0, "reg_fee": 0.0, "stamp_duty": 0.0, "is_after_bu": unit_is_after_bu}
+                    res_units[unit] = {"unit": unit, "party": party, "amount": 0.0, "reg_fee": 0.0, "stamp_duty": 0.0, "is_after_bu": unit_is_after_bu, "rate": unit_rate}
                 res_units[unit]["amount"] += amt
                 res_units[unit]["reg_fee"] += reg_fee
                 res_units[unit]["stamp_duty"] += stamp_duty
@@ -201,7 +203,7 @@ class ExcelGenerator:
                     continue
                 u_key = unit or f"Shop-{party[:15]}"
                 if u_key not in shop_units:
-                    shop_units[u_key] = {"unit": unit or "", "party": party, "amount": 0.0, "reg_fee": 0.0, "stamp_duty": 0.0, "is_after_bu": unit_is_after_bu}
+                    shop_units[u_key] = {"unit": unit or "", "party": party, "amount": 0.0, "reg_fee": 0.0, "stamp_duty": 0.0, "is_after_bu": unit_is_after_bu, "rate": unit_rate}
                 shop_units[u_key]["amount"] += amt
                 shop_units[u_key]["reg_fee"] += reg_fee
                 shop_units[u_key]["stamp_duty"] += stamp_duty
@@ -229,9 +231,12 @@ class ExcelGenerator:
                 ws.cell(r_idx, 13).value = 0
                 ws.cell(r_idx, 14).value = 0
             else:
-                # Before-BU advances: Tax is calculated inclusive of tax base (1% rate: CGST 0.5%)
+                # Before-BU advances: tax inclusive of tax base, at this unit's own rate slab
+                # (1% if its total consideration is within the affordable threshold, else 5%)
+                rate = data.get("rate", 0.01)
+                half_pct, denom = rate * 50, 100 + rate * 100
                 ws.cell(r_idx, 13).value = f'=C{r_idx}-D{r_idx}-F{r_idx}-H{r_idx}'
-                ws.cell(r_idx, 14).value = f'=ROUND(M{r_idx}*0.5/101, 2)'
+                ws.cell(r_idx, 14).value = f'=ROUND(M{r_idx}*{half_pct:g}/{denom:g}, 2)'
             r_idx += 1
 
         # 5. Populate shop units into rows 223..229
@@ -251,9 +256,11 @@ class ExcelGenerator:
                 ws.cell(s_idx, 13).value = 0
                 ws.cell(s_idx, 14).value = 0
             else:
-                # Commercial @ 5% inclusive (CGST 2.5%)
+                # Commercial units: always the commercial rate slab, inclusive of tax base
+                rate = data.get("rate", 0.05)
+                half_pct, denom = rate * 50, 100 + rate * 100
                 ws.cell(s_idx, 13).value = f'=C{s_idx}-D{s_idx}-F{s_idx}'
-                ws.cell(s_idx, 14).value = f'=ROUND(M{s_idx}*2.5/105, 2)'
+                ws.cell(s_idx, 14).value = f'=ROUND(M{s_idx}*{half_pct:g}/{denom:g}, 2)'
             s_idx += 1
 
         # 6. Update After-BU Exempt Sale in FOOTPRINT- CALCULATION Row 17
@@ -289,14 +296,11 @@ class ExcelGenerator:
         if not vouchers:
             return
 
-        # Group and populate
+        # Group and populate (classification pre-computed upstream - see _populate_footprint_sheet)
         units_map = {}
         for v in vouchers:
             party = str(v.get("party_name") or v.get("name") or v.get("member_name") or "").strip()
-            orig = str(v.get("party_original") or v.get("raw_name") or "").strip()
-            if is_creditor_party(party) or is_creditor_party(orig):
-                continue
-            if not v.get("is_income", True):
+            if not v.get("_is_income", v.get("is_income", True)):
                 continue
             unit = str(v.get("unit_no") or v.get("unit") or v.get("flat_no") or "").strip()
             amt = float(v.get("cr_amount") or v.get("amount") or 0)

@@ -11,7 +11,10 @@ from flask import Flask, render_template, request, jsonify, send_file, send_from
 
 from core.tally_client import TallyClient
 from core.tally_file_reader import TallyFileReader
-from core.gst_rules import RealEstateGSTRules, is_creditor_party, is_after_bu_member, calculate_inclusive_tax
+from core.gst_rules import (
+    RealEstateGSTRules, is_creditor_party, is_after_bu_member, is_cancelled_booking,
+    is_plausible_receipt_amount, is_voucher_after_bu_date, parse_voucher_date, calculate_inclusive_tax
+)
 from core.excel_generator import ExcelGenerator
 from core.db import db
 
@@ -23,19 +26,192 @@ TEMPLATE_PATH = PRIMARY_TEMPLATE_PATH if os.path.exists(PRIMARY_TEMPLATE_PATH) e
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-def classify_voucher_income(unit_str, party_str, orig_str="", narr=""):
-    """Heuristically identifies whether a voucher is a genuine customer flat/shop
-    payment receipt (income) vs. a purchase/expense/creditor bill (vendor ledger).
-    Strictly excludes creditors, contractors, material suppliers, and bank pass-throughs.
+def classify_voucher_income(unit_str, party_str, orig_str="", narr="", amount=None):
+    """Identifies whether a voucher is a genuine customer flat/shop owner payment (income)
+    vs. anything else: a purchase/expense/creditor bill, a non-GST pass-through (stamp duty,
+    registration fee, refundable deposit), a cancelled/refunded booking, or an implausible
+    single-voucher amount that doesn't look like a real owner payment (e.g. a sale-deed/
+    agreement-value journal entry swept in because Tally's VOUCHERTYPENAME isn't filtered).
     """
     if is_creditor_party(party_str, orig_str, narr):
+        return False
+    if is_cancelled_booking(party_str, orig_str, narr):
         return False
     u = (unit_str or "").strip()
     if not u or u in ("—", "-", "N/A", "Unit N/A"):
         return False
     if not re.search(r"\d", u) and not any(k in (party_str or "").lower() for k in ["shop", "sh-", "sh "]):
         return False
+    if amount is not None and not is_plausible_receipt_amount(float(amount)):
+        return False
     return True
+
+def get_project_rate_config(project_code):
+    """Raw numeric GST rate slabs for a project (not the display-formatted metadata from
+    get_projects_metadata), needed to pick the correct rate per unit:
+    - default_residential_rate: flats valued <= the affordable threshold (1%)
+    - higher_residential_rate: flats valued above the affordable threshold (5%)
+    - commercial_rate: shop / commercial units, regardless of value (5%)
+    """
+    master = load_project_master()
+    default_threshold = master.get("threshold_affordable_inr", 4500000)
+    for pcfg in master.get("projects", {}).values():
+        if pcfg.get("code") == project_code:
+            return {
+                "default_residential_rate": pcfg.get("default_residential_rate", 0.01),
+                "higher_residential_rate": pcfg.get("higher_residential_rate", 0.05),
+                "commercial_rate": pcfg.get("commercial_rate", 0.05),
+                "threshold_affordable_inr": pcfg.get("threshold_affordable_inr", default_threshold),
+            }
+    return {
+        "default_residential_rate": 0.01, "higher_residential_rate": 0.05,
+        "commercial_rate": 0.05, "threshold_affordable_inr": default_threshold
+    }
+
+def compute_unit_tax_rates(db_rows, rate_cfg):
+    """First pass over a project's FULL voucher history (not just the current month/view) to
+    estimate each unit's total consideration - the sum of its genuine owner-payment vouchers,
+    using the same exclusion rules as classify_voucher_income - and assign the applicable GST
+    rate slab per the CA's rule: flats valued <= the affordable threshold get the lower rate,
+    flats above it get the higher rate, and shop/commercial units always get the commercial
+    rate regardless of value. Returns {unit_no: rate}. Must be computed on full history,
+    since a unit's running total determines its slab even when viewing a single month.
+    """
+    threshold = rate_cfg["threshold_affordable_inr"]
+    totals = {}
+    shop_units = set()
+    for r in db_rows:
+        unit_val = str(r.get("unit_no") or r.get("block_no") or "").strip()
+        party_val = r.get("party_name") or ""
+        raw_val = r.get("party_original") or ""
+        narr_val = r.get("narration") or ""
+        amt = float(r.get("amount") or 0)
+        if not classify_voucher_income(unit_val, party_val, raw_val, narr_val, amount=amt):
+            continue
+        totals[unit_val] = totals.get(unit_val, 0.0) + amt
+        if unit_val.upper().startswith("SHOP") or any(k in party_val.lower() for k in ["shop", "sh-", "sh "]):
+            shop_units.add(unit_val)
+
+    rates = {}
+    for unit_val, total in totals.items():
+        if unit_val in shop_units:
+            rates[unit_val] = rate_cfg["commercial_rate"]
+        elif total <= threshold:
+            rates[unit_val] = rate_cfg["default_residential_rate"]
+        else:
+            rates[unit_val] = rate_cfg["higher_residential_rate"]
+    return rates
+
+def compute_unit_bu_status(db_rows, has_bu, bu_date_str):
+    """Determines each unit's Post-BU exemption status using its EARLIEST payment date as a
+    proxy for when the unit was booked (its sale agreement date) - Schedule III Entry 5
+    exemption depends on whether the unit's sale agreement predates BU, not on each
+    individual installment's own payment date. A unit first paid for before BU stays taxable
+    on ALL its installments, even ones paid after BU; a unit first paid for after BU
+    (bought as a completed unit) is exempt throughout. Returns {unit_no: bool}.
+    """
+    first_dates = {}
+    for r in db_rows:
+        unit_val = str(r.get("unit_no") or r.get("block_no") or "").strip()
+        party_val = r.get("party_name") or ""
+        raw_val = r.get("party_original") or ""
+        narr_val = r.get("narration") or ""
+        amt = float(r.get("amount") or 0)
+        if not classify_voucher_income(unit_val, party_val, raw_val, narr_val, amount=amt):
+            continue
+        v_date = r.get("date") or r.get("iso_date") or ""
+        v_dt = parse_voucher_date(v_date)
+        if not v_dt:
+            continue
+        if unit_val not in first_dates or v_dt < first_dates[unit_val]:
+            first_dates[unit_val] = v_dt
+
+    statuses = {}
+    for unit_val, first_dt in first_dates.items():
+        statuses[unit_val] = is_voucher_after_bu_date(first_dt.strftime("%d-%m-%Y"), has_bu, bu_date_str)
+    return statuses
+
+def enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg):
+    """
+    Single source of truth for voucher classification, shared by the live dashboard
+    (/api/vouchers) and the actual filed GSTR-1 Excel generator, so the two can never
+    silently disagree the way the dashboard and the Excel output did before this fix.
+    db_rows should be a project's FULL voucher history (not pre-filtered by month), since
+    computing each unit's rate slab requires its total consideration across all time.
+    Returns the same rows, each augmented with:
+      _is_creditor, _is_cancelled, _is_plausible, _is_after_bu, _tax_rate,
+      _is_income, _taxable_amount, _classification, _badge_type
+    """
+    unit_rates = compute_unit_tax_rates(db_rows, rate_cfg)
+    unit_bu_status = compute_unit_bu_status(db_rows, has_bu, bu_date_str)
+    out = []
+    for r in db_rows:
+        v = dict(r)
+        amt = float(v.get("amount") or v.get("cr_amount") or 0)
+        unit_val = str(v.get("unit_no") or v.get("block_no") or v.get("unit") or v.get("flat_no") or "").strip()
+        party_val = v.get("party_name") or v.get("name") or v.get("member_name") or ""
+        raw_val = v.get("party_original") or v.get("raw_name") or ""
+        narr_val = v.get("narration") or ""
+        v_date = v.get("date") or v.get("iso_date") or ""
+        is_ex = bool(v.get("is_exempt"))
+
+        is_creditor = is_creditor_party(party_val, raw_val, narr_val)
+        is_cancelled = is_cancelled_booking(party_val, raw_val, narr_val)
+        is_plausible = is_plausible_receipt_amount(amt)
+        has_unit = classify_voucher_income(unit_val, party_val, raw_val, narr_val, amount=amt if is_plausible else None)
+        # BU exemption: the explicit 'After Bu' ledger tag (added by CA staff, who know per-unit
+        # when each was actually sold) is the authoritative signal here - NOT a blind date
+        # comparison. compute_unit_bu_status's earliest-payment-date test is only trustworthy
+        # when the synced history actually reaches back to a unit's true booking date; this
+        # dataset's sync window starts ~13 months after the BU date itself, so "no payment
+        # before BU in what we've synced" proves nothing about when the unit was really booked.
+        # Verified on real data: blindly trusting that date signal wrongly exempted Rs.1.17 Cr of
+        # genuine pre-BU installments that simply had no earlier tagged history in this sync.
+        # Defaulting an uncertain case to "exempt" understates GST liability, which is the more
+        # dangerous direction for compliance - so untagged vouchers are taxable unless proven
+        # otherwise. unit_bu_status is still computed and returned by the caller for display,
+        # but does not feed exemption decisions.
+        is_after_bu = is_after_bu_member(party_val, raw_val, narr_val) or is_ex
+        # Not tagged, but this specific voucher's OWN date falls after the BU permission date:
+        # a real signal worth surfacing, but not proof of a post-BU booking on its own (see the
+        # long comment above) - so it's flagged for the CA to confirm rather than silently taxed
+        # or silently exempted either way.
+        date_suggests_after_bu = (not is_after_bu) and is_voucher_after_bu_date(v_date, has_bu, bu_date_str)
+        is_income = not is_creditor and not is_cancelled and is_plausible and has_unit
+        unit_rate = unit_rates.get(unit_val, rate_cfg["default_residential_rate"])
+
+        if is_creditor:
+            badge_type, classification, taxable_amt = "creditor", "Vendor / Creditor (Excluded)", 0.0
+        elif is_cancelled:
+            badge_type, classification, taxable_amt = "cancelled", "Cancelled / Refunded Booking (Excluded)", 0.0
+        elif not is_plausible:
+            badge_type, classification, taxable_amt = "review", "Excluded - Abnormal Amount (Needs CA Review)", 0.0
+        elif not has_unit:
+            badge_type, classification, taxable_amt = "expense", "Purchase / Expense", 0.0
+        elif is_after_bu:
+            badge_type, classification, taxable_amt = "exempt", "Exempt Post-BU (Schedule III)", 0.0
+        else:
+            inc_tax = calculate_inclusive_tax(amt, rate=unit_rate)
+            taxable_amt = inc_tax["taxable_base"]
+            if date_suggests_after_bu:
+                badge_type = "bu_review"
+                classification = f"Taxable @ {unit_rate*100:g}% - Date is Post-BU, Not Tagged (Confirm with CA)"
+            else:
+                badge_type = "taxable-1" if unit_rate <= 0.01 else "taxable-5"
+                classification = f"Taxable Advance Receipt ({unit_rate*100:g}% Inclusive)"
+
+        v["_is_creditor"] = is_creditor
+        v["_is_cancelled"] = is_cancelled
+        v["_is_plausible"] = is_plausible
+        v["_is_after_bu"] = is_after_bu
+        v["_date_suggests_after_bu"] = date_suggests_after_bu
+        v["_tax_rate"] = unit_rate
+        v["_is_income"] = is_income
+        v["_taxable_amount"] = taxable_amt
+        v["_classification"] = classification
+        v["_badge_type"] = badge_type
+        out.append(v)
+    return out
 
 # Startup Database Seeding
 try:
@@ -144,8 +320,16 @@ def generate_gstr1_for_period(month_str):
         if not pcode:
             continue
         v_list = db.get_vouchers(pcode)
+        has_bu = pcfg.get("has_bu", False)
+        bu_date_str = pcfg.get("bu_permission_date")
+        rate_cfg = get_project_rate_config(pcode)
+        # Classify against the FULL voucher history, not just this month - a unit's
+        # total consideration (and therefore its 1%/5% rate slab) depends on all its
+        # receipts to date, not only the ones that happen to fall in this tax period.
+        classified_full = enrich_and_classify_vouchers(v_list, has_bu, bu_date_str, rate_cfg)
+
         target_v = []
-        for v in v_list:
+        for v in classified_full:
             v_date = v.get("date") or v.get("iso_date") or ""
             vm, vy = extract_month_year(v_date)
             if vm == f"{m_num:02d}" and (vy == full_y or vy == short_y):
@@ -169,36 +353,20 @@ def generate_gstr1_for_period(month_str):
 
     gen.generate_monthly_workbook(month_normalized, project_data, out_file)
 
-    # Compute actual summary metrics from loaded vouchers
-    income_v = []
+    # Compute actual summary metrics from the shared classification computed above
+    income_v = [v for v in all_target_vouchers if v.get("_is_income")]
     total_after_bu = 0.0
     total_taxable_base = 0.0
     total_output_gst = 0.0
 
-    for v in all_target_vouchers:
-        u = v.get("unit_no") or v.get("unit") or v.get("flat_no") or ""
-        p = v.get("party_name") or v.get("name") or v.get("member_name") or ""
-        orig = v.get("party_original") or v.get("raw_name") or ""
-        narr = v.get("narration") or ""
-
-        if is_creditor_party(p, orig, narr):
-            continue
-        if not classify_voucher_income(u, p, orig, narr):
-            continue
-
+    for v in income_v:
         amt = float(v.get("cr_amount") or v.get("amount") or 0)
-        ded = float(v.get("deductions") or v.get("reg_fee", 0) + v.get("stamp_duty", 0) or 0)
-        net_receipt = max(0.0, amt - ded)
-
-        if is_after_bu_member(p, orig, narr):
-            total_after_bu += net_receipt
+        if v.get("_is_after_bu"):
+            total_after_bu += amt
         else:
-            # Before-BU advances: calculate tax considering receipt as inclusive of tax base (1% rate)
-            tax_res = calculate_inclusive_tax(net_receipt, rate=0.01)
-            total_taxable_base += tax_res["taxable_base"]
-            total_output_gst += tax_res["total_gst"]
-
-        income_v.append(v)
+            inc_tax = calculate_inclusive_tax(amt, rate=v.get("_tax_rate", 0.01))
+            total_taxable_base += inc_tax["taxable_base"]
+            total_output_gst += inc_tax["total_gst"]
 
     total_gross = sum(float(v.get("cr_amount") or v.get("amount") or 0) for v in income_v)
     total_deductions = sum(float(v.get("deductions") or 0) for v in income_v)
@@ -992,62 +1160,49 @@ def api_vouchers():
     seen_vch = set()
     try:
         db_rows = db.get_vouchers(target_key)
-        if db_rows:
-            for r in db_rows:
-                v_num = r.get("voucher_number") or ""
-                v_date = r.get("date") or ""
-                v_key = f"{v_num}_{v_date}_{r.get('amount')}"
-                if v_key in seen_vch:
-                    continue
-                seen_vch.add(v_key)
-                
-                amt = float(r.get("amount") or 0)
-                is_ex = bool(r.get("is_exempt"))
-                unit_val = r.get("unit_no") or r.get("block_no") or "—"
-                party_val = r.get("party_name", "")
-                raw_val = r.get("party_original", "")
-                narr_val = r.get("narration", "")
+        rate_cfg = get_project_rate_config(target_key)
+        classified_rows = enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg)
+        for r in classified_rows:
+            v_num = r.get("voucher_number") or ""
+            v_date = r.get("date") or ""
+            v_key = f"{v_num}_{v_date}_{r.get('amount')}"
+            if v_key in seen_vch:
+                continue
+            seen_vch.add(v_key)
 
-                is_creditor = is_creditor_party(party_val, raw_val, narr_val)
-                is_after_bu = is_after_bu_member(party_val, raw_val, narr_val) or is_ex
-                is_income = not is_creditor and classify_voucher_income(unit_val, party_val, raw_val, narr_val)
+            amt = float(r.get("amount") or 0)
+            unit_val = r.get("unit_no") or r.get("block_no") or "—"
+            party_val = r.get("party_name", "")
+            raw_val = r.get("party_original", "")
+            is_income = r["_is_income"]
+            is_creditor = r["_is_creditor"]
 
-                if is_after_bu:
-                    badge_type = "exempt"
-                    classification = "Exempt Post-BU (Schedule III)"
-                    taxable_amt = 0.0
-                elif is_creditor:
-                    badge_type = "creditor"
-                    classification = "Vendor / Creditor (Excluded)"
-                    taxable_amt = 0.0
-                elif not is_income:
-                    badge_type = "expense"
-                    classification = "Purchase / Expense"
-                    taxable_amt = 0.0
-                else:
-                    inc_tax = calculate_inclusive_tax(amt, rate=0.01)
-                    taxable_amt = inc_tax["taxable_base"]
-                    badge_type = "taxable-1"
-                    classification = "Taxable Advance Receipt (1% Inclusive)"
+            type_label = "Member Receipt" if is_income else (
+                "Vendor / Creditor" if is_creditor else (
+                    "Cancelled / Refunded" if r["_is_cancelled"] else (
+                        "Needs Review" if not r["_is_plausible"] else "Purchase / Expense"
+                    )
+                )
+            )
 
-                all_vouchers.append({
-                    "date": v_date,
-                    "iso_date": v_date,
-                    "vch_no": v_num,
-                    "unit": unit_val,
-                    "flat_no": unit_val,
-                    "name": party_val,
-                    "member_name": party_val,
-                    "raw_name": raw_val,
-                    "project": pcfg["name"],
-                    "cr_amount": amt,
-                    "deductions": 0.0,
-                    "taxable_amount": taxable_amt,
-                    "classification": classification,
-                    "badge_type": badge_type,
-                    "is_income": is_income,
-                    "type": "Member Receipt" if is_income else ("Vendor / Creditor" if is_creditor else "Purchase / Expense")
-                })
+            all_vouchers.append({
+                "date": v_date,
+                "iso_date": v_date,
+                "vch_no": v_num,
+                "unit": unit_val,
+                "flat_no": unit_val,
+                "name": party_val,
+                "member_name": party_val,
+                "raw_name": raw_val,
+                "project": pcfg["name"],
+                "cr_amount": amt,
+                "deductions": 0.0,
+                "taxable_amount": r["_taxable_amount"],
+                "classification": r["_classification"],
+                "badge_type": r["_badge_type"],
+                "is_income": is_income,
+                "type": type_label
+            })
     except Exception as e:
         print("[DB Fetch Notice]:", e)
 
