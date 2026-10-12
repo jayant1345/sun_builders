@@ -17,6 +17,17 @@ CREDITOR_KEYWORDS = [
     # Refundable / security deposits are held in trust, not part of sale consideration (CA's own
     # 5-category non-GST exclusion list). "Refund"/"refundable"/"refundale" (common typo) all match.
     r'\brefund', r'\bsecurity deposit\b', r'\bmember deposit\b',
+    # "M/s" (Messrs.) is a business-entity prefix - a flat/shop owner is never addressed this way,
+    # only a registered firm. Backstops the creditor check for any vendor whose ledger name
+    # happens to parse out a digit-containing fragment that looks like a flat code (e.g. a
+    # supplier ledger swept into income because of a coincidental match in the unit-code regex).
+    # NOTE: deliberately no bare '\bllp\b' keyword - the company's own name ("Sun Builders
+    # Projects LLP") appears naturally in bank transfer narrations (e.g. NEFT/RTGS reference
+    # text), which would wrongly flag genuine member payments as creditor entries. Confirmed
+    # on real data: this exact pattern hit unit C-901's real payments.
+    r'\bm/s\.?\b', r'\btimber\b', r'\bmart\b', r'\bstores?\b', r'\bsupply\b', r'\bindustries\b',
+    r'\bworks contract\b', r'\bdepot\b', r'\bwholesale\b', r'\bdistributors?\b', r'\bimpex\b',
+    r'\bpvt\.?\s*ltd\.?\b',
 ]
 
 def is_creditor_party(party_str: str, raw_name: str = "", narr: str = "") -> bool:
