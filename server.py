@@ -11,7 +11,7 @@ from flask import Flask, render_template, request, jsonify, send_file, send_from
 
 from core.tally_client import TallyClient
 from core.tally_file_reader import TallyFileReader
-from core.gst_rules import RealEstateGSTRules
+from core.gst_rules import RealEstateGSTRules, is_creditor_party, is_after_bu_member, calculate_inclusive_tax
 from core.excel_generator import ExcelGenerator
 from core.db import db
 
@@ -23,30 +23,17 @@ TEMPLATE_PATH = PRIMARY_TEMPLATE_PATH if os.path.exists(PRIMARY_TEMPLATE_PATH) e
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-EXPENSE_LEDGER_KEYWORDS = [
-    "purchase", "material", "electric", "electricity", "cable", "notary", "notarial",
-    "stamp duty", "stamp", "registration", "reg fee", "reg. fee", "maintenance exp",
-    "maintanance exp", "auda", "aec", "torrent", "vendor", "supplier", "contractor",
-    "consultant", "professional fee", "legal fee", "audit fee", "bank charges",
-    "courier", "printing", "stationery", "freight", "transport", "labour", "labor",
-    "cement", "steel", "sand", "bricks", "tiles", "plumbing", "sanitary", "paint",
-    "security services", "water charges", "diesel", "fuel", "repair", "maint ",
-]
-
-def classify_voucher_income(unit_str, party_str):
+def classify_voucher_income(unit_str, party_str, orig_str="", narr=""):
     """Heuristically identifies whether a voucher is a genuine customer flat/shop
-    payment receipt (income) vs. a purchase/expense bill (vendor ledger), since
-    Tally's VOUCHERTYPENAME is not currently persisted per-voucher.
-    A real flat/unit code (e.g. 'E-1003', 'B-301') always contains a digit;
-    vendor/expense ledgers used as the flat placeholder (e.g. 'Electric') do not.
+    payment receipt (income) vs. a purchase/expense/creditor bill (vendor ledger).
+    Strictly excludes creditors, contractors, material suppliers, and bank pass-throughs.
     """
+    if is_creditor_party(party_str, orig_str, narr):
+        return False
     u = (unit_str or "").strip()
-    p = (party_str or "").strip().lower()
     if not u or u in ("—", "-", "N/A", "Unit N/A"):
         return False
-    if not re.search(r"\d", u):
-        return False
-    if any(kw in p for kw in EXPENSE_LEDGER_KEYWORDS):
+    if not re.search(r"\d", u) and not any(k in (party_str or "").lower() for k in ["shop", "sh-", "sh "]):
         return False
     return True
 
@@ -183,25 +170,51 @@ def generate_gstr1_for_period(month_str):
     gen.generate_monthly_workbook(month_normalized, project_data, out_file)
 
     # Compute actual summary metrics from loaded vouchers
-    income_v = [v for v in all_target_vouchers if classify_voucher_income(v.get("unit_no") or v.get("unit"), v.get("party_name") or v.get("name"))]
+    income_v = []
+    total_after_bu = 0.0
+    total_taxable_base = 0.0
+    total_output_gst = 0.0
+
+    for v in all_target_vouchers:
+        u = v.get("unit_no") or v.get("unit") or v.get("flat_no") or ""
+        p = v.get("party_name") or v.get("name") or v.get("member_name") or ""
+        orig = v.get("party_original") or v.get("raw_name") or ""
+        narr = v.get("narration") or ""
+
+        if is_creditor_party(p, orig, narr):
+            continue
+        if not classify_voucher_income(u, p, orig, narr):
+            continue
+
+        amt = float(v.get("cr_amount") or v.get("amount") or 0)
+        ded = float(v.get("deductions") or v.get("reg_fee", 0) + v.get("stamp_duty", 0) or 0)
+        net_receipt = max(0.0, amt - ded)
+
+        if is_after_bu_member(p, orig, narr):
+            total_after_bu += net_receipt
+        else:
+            # Before-BU advances: calculate tax considering receipt as inclusive of tax base (1% rate)
+            tax_res = calculate_inclusive_tax(net_receipt, rate=0.01)
+            total_taxable_base += tax_res["taxable_base"]
+            total_output_gst += tax_res["total_gst"]
+
+        income_v.append(v)
+
     total_gross = sum(float(v.get("cr_amount") or v.get("amount") or 0) for v in income_v)
     total_deductions = sum(float(v.get("deductions") or 0) for v in income_v)
-    exempt_bu = sum(float(v.get("cr_amount") or v.get("amount") or 0) for v in income_v if v.get("is_exempt") or v.get("badge_type") == "exempt")
-    taxable = max(0.0, total_gross - total_deductions - exempt_bu)
-    output_gst = round(taxable * 0.01, 2)
     distinct_units = len(set(v.get("unit_no") or v.get("unit") for v in income_v if v.get("unit_no") or v.get("unit")))
 
     summary = {
         "total_units": distinct_units,
         "gross_receipts": round(total_gross, 2),
         "non_gst_deductions": round(total_deductions, 2),
-        "exempt_post_bu": round(exempt_bu, 2),
-        "net_taxable": round(taxable, 2),
-        "output_gst": output_gst,
+        "exempt_post_bu": round(total_after_bu, 2),
+        "net_taxable": round(total_taxable_base, 2),
+        "output_gst": round(total_output_gst, 2),
         "table_4_b2b": {"taxable": 0, "tax": 0},
-        "table_7_b2c": {"taxable": round(taxable, 2), "tax": output_gst},
-        "table_11_advances": {"gross": round(total_gross, 2), "net_tax": output_gst},
-        "total_tax_liability": output_gst
+        "table_7_b2c": {"taxable": round(total_taxable_base, 2), "tax": round(total_output_gst, 2)},
+        "table_11_advances": {"gross": round(total_gross, 2), "net_tax": round(total_output_gst, 2)},
+        "total_tax_liability": round(total_output_gst, 2)
     }
 
     return filename, out_file, summary, from_date, to_date
@@ -992,7 +1005,31 @@ def api_vouchers():
                 is_ex = bool(r.get("is_exempt"))
                 unit_val = r.get("unit_no") or r.get("block_no") or "—"
                 party_val = r.get("party_name", "")
-                is_income = classify_voucher_income(unit_val, r.get("party_original") or party_val)
+                raw_val = r.get("party_original", "")
+                narr_val = r.get("narration", "")
+
+                is_creditor = is_creditor_party(party_val, raw_val, narr_val)
+                is_after_bu = is_after_bu_member(party_val, raw_val, narr_val) or is_ex
+                is_income = not is_creditor and classify_voucher_income(unit_val, party_val, raw_val, narr_val)
+
+                if is_after_bu:
+                    badge_type = "exempt"
+                    classification = "Exempt Post-BU (Schedule III)"
+                    taxable_amt = 0.0
+                elif is_creditor:
+                    badge_type = "creditor"
+                    classification = "Vendor / Creditor (Excluded)"
+                    taxable_amt = 0.0
+                elif not is_income:
+                    badge_type = "expense"
+                    classification = "Purchase / Expense"
+                    taxable_amt = 0.0
+                else:
+                    inc_tax = calculate_inclusive_tax(amt, rate=0.01)
+                    taxable_amt = inc_tax["taxable_base"]
+                    badge_type = "taxable-1"
+                    classification = "Taxable Advance Receipt (1% Inclusive)"
+
                 all_vouchers.append({
                     "date": v_date,
                     "iso_date": v_date,
@@ -1001,15 +1038,15 @@ def api_vouchers():
                     "flat_no": unit_val,
                     "name": party_val,
                     "member_name": party_val,
-                    "raw_name": r.get("party_original", ""),
+                    "raw_name": raw_val,
                     "project": pcfg["name"],
                     "cr_amount": amt,
                     "deductions": 0.0,
-                    "taxable_amount": 0.0 if is_ex else amt,
-                    "classification": r.get("classification", ""),
-                    "badge_type": "exempt" if is_ex else ("taxable-1" if "1%" in str(r.get("gst_rate")) else "taxable-5"),
+                    "taxable_amount": taxable_amt,
+                    "classification": classification,
+                    "badge_type": badge_type,
                     "is_income": is_income,
-                    "type": "Member Receipt" if is_income else "Purchase / Expense"
+                    "type": "Member Receipt" if is_income else ("Vendor / Creditor" if is_creditor else "Purchase / Expense")
                 })
     except Exception as e:
         print("[DB Fetch Notice]:", e)

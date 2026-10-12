@@ -4,6 +4,7 @@ import shutil
 import calendar
 from datetime import datetime
 import openpyxl
+from core.gst_rules import is_creditor_party, is_after_bu_member
 
 class ExcelGenerator:
     """
@@ -111,7 +112,10 @@ class ExcelGenerator:
     def _populate_footprint_sheet(self, wb, vouchers):
         """
         Populates SUN REALTY FOOTPRINT- MEMBERS with actual target month vouchers.
-        Clears old transactions from template and fills new active units.
+        Follows CA directives:
+        1. Creditors/vendors strictly excluded.
+        2. Flats purchased after BU permission are 0% GST (Completely Exempt).
+        3. Tax on Before-BU advances calculated considering the receipt as inclusive of tax base.
         """
         sheet_name = "SUN REALTY FOOTPRINT- MEMBERS"
         if sheet_name not in wb.sheetnames:
@@ -133,7 +137,7 @@ class ExcelGenerator:
             ws.cell(r, 11).value = None
             ws.cell(r, 12).value = None
             ws.cell(r, 13).value = f'=C{r}-D{r}-F{r}-H{r}'
-            ws.cell(r, 14).value = f'=M{r}*0.5/100'
+            ws.cell(r, 14).value = f'=ROUND(M{r}*0.5/101, 2)'
 
         # 2. Clear shop rows (223 to 229)
         for r in range(223, 230):
@@ -150,46 +154,61 @@ class ExcelGenerator:
             ws.cell(r, 11).value = None
             ws.cell(r, 12).value = None
             ws.cell(r, 13).value = f'=C{r}-D{r}-F{r}'
+            ws.cell(r, 14).value = f'=ROUND(M{r}*2.5/105, 2)'
 
         if not vouchers:
             return
 
-        # 3. Group vouchers by unit
+        # 3. Group vouchers by unit (strictly excluding creditors)
         res_units = {}
         shop_units = {}
+        total_after_bu_exempt = 0.0
 
         for v in vouchers:
-            # Only income / member receipts
-            is_inc = v.get("is_income", True)
-            if not is_inc:
+            party = str(v.get("party_name") or v.get("name") or v.get("member_name") or "").strip()
+            orig = str(v.get("party_original") or v.get("raw_name") or "").strip()
+            narr = str(v.get("narration") or "").strip()
+
+            # Strictly exclude creditors, vendors, suppliers, contractors and pass-through bank entries
+            if is_creditor_party(party) or is_creditor_party(orig) or is_creditor_party(narr):
+                continue
+            if not v.get("is_income", True):
                 continue
 
             unit = str(v.get("unit_no") or v.get("unit") or v.get("flat_no") or "").strip()
             amt = float(v.get("cr_amount") or v.get("amount") or 0)
-            party = str(v.get("party_name") or v.get("name") or v.get("member_name") or "").strip()
             reg_fee = float(v.get("reg_fee") or 0)
             stamp_duty = float(v.get("stamp_duty") or 0)
 
+            unit_is_after_bu = is_after_bu_member(party, orig, narr)
+            if unit_is_after_bu:
+                total_after_bu_exempt += max(0.0, amt - reg_fee - stamp_duty)
+
             # Check if residential or commercial
-            # Residential units typically start with Block letters A-J
             if re.match(r'^[A-Za-z]\s*[\-_/]', unit):
                 if unit not in res_units:
-                    res_units[unit] = {"unit": unit, "party": party, "amount": 0.0, "reg_fee": 0.0, "stamp_duty": 0.0}
+                    res_units[unit] = {"unit": unit, "party": party, "amount": 0.0, "reg_fee": 0.0, "stamp_duty": 0.0, "is_after_bu": unit_is_after_bu}
                 res_units[unit]["amount"] += amt
                 res_units[unit]["reg_fee"] += reg_fee
                 res_units[unit]["stamp_duty"] += stamp_duty
                 if party and not res_units[unit]["party"]:
                     res_units[unit]["party"] = party
+                if unit_is_after_bu:
+                    res_units[unit]["is_after_bu"] = True
             else:
-                # Shop or commercial or suspense
-                u_key = unit or "Suspense"
+                # Genuine shop/commercial units only
+                if not unit and not any(k in party.lower() for k in ["shop", "sh-", "sh "]):
+                    continue
+                u_key = unit or f"Shop-{party[:15]}"
                 if u_key not in shop_units:
-                    shop_units[u_key] = {"unit": unit or "", "party": party or "Suspense A/c of Members' Collection", "amount": 0.0, "reg_fee": 0.0, "stamp_duty": 0.0}
+                    shop_units[u_key] = {"unit": unit or "", "party": party, "amount": 0.0, "reg_fee": 0.0, "stamp_duty": 0.0, "is_after_bu": unit_is_after_bu}
                 shop_units[u_key]["amount"] += amt
                 shop_units[u_key]["reg_fee"] += reg_fee
                 shop_units[u_key]["stamp_duty"] += stamp_duty
-                if party and (not shop_units[u_key]["party"] or "Suspense" in shop_units[u_key]["party"]):
+                if party and not shop_units[u_key]["party"]:
                     shop_units[u_key]["party"] = party
+                if unit_is_after_bu:
+                    shop_units[u_key]["is_after_bu"] = True
 
         # 4. Populate residential units into rows 9..217
         r_idx = 9
@@ -203,6 +222,16 @@ class ExcelGenerator:
                 ws.cell(r_idx, 4).value = data["reg_fee"]
             if data["stamp_duty"] > 0:
                 ws.cell(r_idx, 6).value = data["stamp_duty"]
+
+            # Tax Calculation:
+            if data.get("is_after_bu"):
+                # Flats purchased after BU permission are 0% GST (Completely Exempt)
+                ws.cell(r_idx, 13).value = 0
+                ws.cell(r_idx, 14).value = 0
+            else:
+                # Before-BU advances: Tax is calculated inclusive of tax base (1% rate: CGST 0.5%)
+                ws.cell(r_idx, 13).value = f'=C{r_idx}-D{r_idx}-F{r_idx}-H{r_idx}'
+                ws.cell(r_idx, 14).value = f'=ROUND(M{r_idx}*0.5/101, 2)'
             r_idx += 1
 
         # 5. Populate shop units into rows 223..229
@@ -217,7 +246,24 @@ class ExcelGenerator:
                 ws.cell(s_idx, 4).value = data["reg_fee"]
             if data["stamp_duty"] > 0:
                 ws.cell(s_idx, 6).value = data["stamp_duty"]
+
+            if data.get("is_after_bu"):
+                ws.cell(s_idx, 13).value = 0
+                ws.cell(s_idx, 14).value = 0
+            else:
+                # Commercial @ 5% inclusive (CGST 2.5%)
+                ws.cell(s_idx, 13).value = f'=C{s_idx}-D{s_idx}-F{s_idx}'
+                ws.cell(s_idx, 14).value = f'=ROUND(M{s_idx}*2.5/105, 2)'
             s_idx += 1
+
+        # 6. Update After-BU Exempt Sale in FOOTPRINT- CALCULATION Row 17
+        if "FOOTPRINT- CALCULATION" in wb.sheetnames:
+            ws_calc = wb["FOOTPRINT- CALCULATION"]
+            if total_after_bu_exempt > 0:
+                ws_calc.cell(17, 2).value = round(total_after_bu_exempt, 2)
+            # Ensure Row 6 formula computes tax inclusive of tax base
+            ws_calc.cell(6, 4).value = "=ROUND(B6*0.5/101, 2)"
+            ws_calc.cell(6, 5).value = "=+D6"
 
     def _populate_parkwest_sheet(self, wb, vouchers):
         """
@@ -246,11 +292,14 @@ class ExcelGenerator:
         # Group and populate
         units_map = {}
         for v in vouchers:
+            party = str(v.get("party_name") or v.get("name") or v.get("member_name") or "").strip()
+            orig = str(v.get("party_original") or v.get("raw_name") or "").strip()
+            if is_creditor_party(party) or is_creditor_party(orig):
+                continue
             if not v.get("is_income", True):
                 continue
             unit = str(v.get("unit_no") or v.get("unit") or v.get("flat_no") or "").strip()
             amt = float(v.get("cr_amount") or v.get("amount") or 0)
-            party = str(v.get("party_name") or v.get("name") or v.get("member_name") or "").strip()
             if unit not in units_map:
                 units_map[unit] = {"unit": unit, "party": party, "amount": 0.0}
             units_map[unit]["amount"] += amt

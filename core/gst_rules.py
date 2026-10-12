@@ -1,6 +1,65 @@
 import re
 from datetime import datetime
 
+CREDITOR_KEYWORDS = [
+    r'\bcreditor\b', r'\bvendor\b', r'\bsupplier\b', r'\bcontractor\b', r'\bsubcontractor\b',
+    r'\bpurchase\b', r'\bmaterial\b', r'\belectric\b', r'\belectricity\b', r'\bcable\b', r'\bnotary\b',
+    r'\bstamp duty\b', r'\bregistration\b', r'\breg fee\b', r'\bsale deed\b', r'\bsales deed\b', r'\bats\b',
+    r'\bmaintenance\b', r'\bmaintanance\b', r'\bauda\b', r'\baec\b', r'\btorrent\b',
+    r'\bconsultant\b', r'\bprofessional fee\b', r'\blegal fee\b', r'\baudit fee\b', r'\bbank charges\b',
+    r'\bcourier\b', r'\bprinting\b', r'\bstationery\b', r'\bfreight\b', r'\btransport\b', r'\broadlines\b', r'\blogistics\b',
+    r'\blabour\b', r'\blabor\b', r'\bcement\b', r'\bsteel\b', r'\bsand supplier\b', r'\bbricks\b', r'\btiles\b', r'\bplumbing\b', r'\bsanitary\b',
+    r'\bpaint\b', r'\bsecurity services\b', r'\bwater charges\b', r'\bdiesel\b', r'\bfuel\b', r'\brepair\b',
+    r'\bcorporation\b', r'\benterprises\b', r'\btraders\b', r'\bbuildcon\b', r'\binfra\b', r'\bagency\b', r'\bagencies\b',
+    r'\bgas\b', r'\bgujarat gas\b', r'\bhardware\b', r'\bplywood\b', r'\bglass\b', r'\baluminium\b', r'\baluminum\b', r'\biron\b',
+    r'\br\.m\.c\b', r'\brmc\b', r'\breadymix\b', r'\bconcrete\b', r'\bearthmovers\b', r'\bexcavation\b', r'\bcrane\b', r'\bbank coll\b',
+    r'\baxis bank\b', r'\bicici bank\b', r'\bhdfc bank\b', r'\bsbi\b'
+]
+
+def is_creditor_party(party_str: str, raw_name: str = "", narr: str = "") -> bool:
+    """Returns True if party name or narration indicates a vendor/creditor/contractor."""
+    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
+    for kw in CREDITOR_KEYWORDS:
+        if re.search(kw, combined):
+            return True
+    return False
+
+def is_after_bu_member(party_str: str, raw_name: str = "", narr: str = "") -> bool:
+    """
+    Returns True if member ledger/narration contains 'After BU' or variations ('Af Bu', 'Afterbu'),
+    indicating flat purchased after BU permission (Schedule III Entry 5 - 0% GST).
+    """
+    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
+    return bool(re.search(r'(?:after|aft|af)\s*[\-_]?\s*bu\b', combined) or 'afterbu' in combined)
+
+def calculate_inclusive_tax(amount: float, rate: float = 0.01) -> dict:
+    """
+    Calculates tax assuming advance receipt amount is INCLUSIVE of GST.
+    For 1% rate:
+        Taxable Base = Round(Amount / 1.01, 2)
+        CGST (0.5%)  = Round((Amount * 0.5) / 101, 2)
+        SGST (0.5%)  = Round((Amount * 0.5) / 101, 2)
+    For 5% rate:
+        Taxable Base = Round(Amount / 1.05, 2)
+        CGST (2.5%)  = Round((Amount * 2.5) / 105, 2)
+        SGST (2.5%)  = Round((Amount * 2.5) / 105, 2)
+    """
+    if rate <= 0 or amount <= 0:
+        return {"taxable_base": 0.0, "cgst": 0.0, "sgst": 0.0, "total_gst": 0.0, "rate": rate}
+    
+    half_rate_pct = (rate * 100.0) / 2.0
+    denom = 100.0 + (rate * 100.0)
+    cgst = round((amount * half_rate_pct) / denom, 2)
+    sgst = round((amount * half_rate_pct) / denom, 2)
+    taxable_base = round(amount / (1.0 + rate), 2)
+    return {
+        "taxable_base": taxable_base,
+        "cgst": cgst,
+        "sgst": sgst,
+        "total_gst": cgst + sgst,
+        "rate": rate
+    }
+
 class RealEstateGSTRules:
     """
     Implements Indian GST Real Estate Rules under Notification 11/2017-CT(R),
