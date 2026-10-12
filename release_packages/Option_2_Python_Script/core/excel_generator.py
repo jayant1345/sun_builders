@@ -71,37 +71,26 @@ class ExcelGenerator:
         target_display_space = f"{m_abbr} - {short_y}"
         last_date_obj = datetime(int(full_y), m_num, last_day)
 
-        # 1. Update Month headers & dates across all sheets
+        # 1. Update Month headers, labels & dates across all sheets
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
-            
-            # Check title rows 1-8
-            for r in range(1, min(ws.max_row + 1, 9)):
-                for c in range(1, min(ws.max_column + 1, 15)):
-                    cell = ws.cell(r, c)
+            for row in ws.iter_rows():
+                for cell in row:
                     val = cell.value
                     if isinstance(val, datetime):
                         # Update month-end date for JV entries
                         if val.year == 2026 or val.year == int(full_y):
                             cell.value = last_date_obj
                     elif isinstance(val, str) and val.strip():
-                        # Replace August patterns with target month
+                        # Replace August 2026 patterns with target month
                         new_val = val
-                        new_val = re.sub(r'AUG[\s\-_]*26', target_display, new_val, flags=re.IGNORECASE)
-                        new_val = re.sub(r"AUG['\s]*26", target_display_tick, new_val, flags=re.IGNORECASE)
-                        new_val = re.sub(r'AUGUST[\s\-_]*2026', f"{m_full} {full_y}", new_val, flags=re.IGNORECASE)
-                        new_val = re.sub(r'AUGUST[\s\-_]*26', f"{m_full}-{short_y}", new_val, flags=re.IGNORECASE)
+                        new_val = re.sub(r"AUG\s*'\s*26\b", target_display_tick, new_val, flags=re.IGNORECASE)
+                        new_val = re.sub(r'AUG[\s\-_]+26\b', target_display, new_val, flags=re.IGNORECASE)
+                        new_val = re.sub(r'AUG26\b', target_display, new_val, flags=re.IGNORECASE)
+                        new_val = re.sub(r'AUGUST[\s\-_]+2026\b', f"{m_full} {full_y}", new_val, flags=re.IGNORECASE)
+                        new_val = re.sub(r'AUGUST[\s\-_]+26\b', f"{m_full}-{short_y}", new_val, flags=re.IGNORECASE)
                         if new_val != val:
                             cell.value = new_val
-
-            # Also check calculation sheets for row label descriptions
-            if "CALC" in sheet_name.upper():
-                for r in range(1, min(ws.max_row + 1, 40)):
-                    cell = ws.cell(r, 1)
-                    val = str(cell.value or "")
-                    if re.search(r"AUG[\s\-_']*26", val, flags=re.IGNORECASE):
-                        new_val = re.sub(r"AUG[\s\-_']*26", target_display, val, flags=re.IGNORECASE)
-                        cell.value = new_val
 
         # 2. Populate or Refresh Member Collection Sheets
         self._populate_footprint_sheet(wb, project_data.get("010010") or project_data.get("FOOTPRINT") or [])
