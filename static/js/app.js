@@ -292,7 +292,7 @@ async function loadRealVouchers(projectKey, month, year) {
             if (tbody) {
                 tbody.innerHTML = '';
                 if (data.vouchers.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-on-surface-variant font-sans">
+                    tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-on-surface-variant font-sans">
                         <div class="flex flex-col items-center justify-center gap-2">
                             <span class="material-symbols-outlined text-outline text-3xl">receipt_long</span>
                             <span class="font-bold text-on-surface">No ${currentVoucherCategory === 'income' ? 'Income (Flat/Shop Receipt)' : ''} Vouchers for ${data.project_name} (${data.company_code}) in Period ${data.period_display || 'Selected'}</span>
@@ -305,10 +305,12 @@ async function loadRealVouchers(projectKey, month, year) {
                         tr.className = 'hover:bg-primary/5 transition-colors';
                         
                         let badgeHtml = '';
-                        if (v.badge_type === 'bu_review') {
+                        if (v.badge_type === 'exempt_date_review') {
                             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-orange-500/10 text-orange-600 border border-orange-500/30 font-medium">⚠ ${v.classification}</span>`;
                         } else if (v.badge_type === 'review') {
                             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-500/10 text-red-600 border border-red-500/30 font-medium">⚠ ${v.classification}</span>`;
+                        } else if (v.badge_type === 'excluded_manual') {
+                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-purple-500/10 text-purple-600 border border-purple-500/30 font-medium">✎ ${v.classification}</span>`;
                         } else if (v.badge_type === 'creditor' || v.badge_type === 'expense') {
                             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-slate-400/10 text-slate-500 border border-slate-400/30 font-medium">${v.classification}</span>`;
                         } else if (v.badge_type === 'cancelled') {
@@ -327,7 +329,8 @@ async function loadRealVouchers(projectKey, month, year) {
                         
                         const unitDisplay = (v.flat_no && v.flat_no !== 'undefined') ? v.flat_no : ((v.unit && v.unit !== 'undefined') ? v.unit : '—');
                         const memberDisplay = (v.member_name && v.member_name !== 'undefined') ? v.member_name : ((v.name && v.name !== 'undefined') ? v.name : 'Member');
-                        
+                        const pencilClass = v.has_override ? 'text-blue-600' : 'text-slate-300 hover:text-slate-500';
+
                         tr.innerHTML = `
                             <td class="py-2.5 px-3 text-on-surface">${v.date}</td>
                             <td class="py-2.5 px-3 text-primary font-semibold font-mono">${v.vch_no}</td>
@@ -337,7 +340,13 @@ async function loadRealVouchers(projectKey, month, year) {
                             <td class="py-2.5 px-3 text-on-surface-variant font-sans">${v.type}</td>
                             <td class="py-2.5 px-3 text-right text-on-surface font-semibold font-mono">₹${formattedCr}</td>
                             <td class="py-2.5 px-4 font-sans">${badgeHtml}</td>
+                            <td class="py-2.5 px-2 text-center">
+                                <button type="button" class="btn-edit-override p-1 rounded hover:bg-slate-100 transition-colors ${pencilClass}" title="${v.has_override ? 'Classification manually overridden - click to edit' : 'Correct classification'}">
+                                    <span class="material-symbols-outlined text-[16px]">edit</span>
+                                </button>
+                            </td>
                         `;
+                        tr.querySelector('.btn-edit-override').addEventListener('click', () => openOverrideModal(v));
                         tbody.appendChild(tr);
                     });
                 }
@@ -749,6 +758,84 @@ async function openUnitHistory(projectKey, unitNo) {
         }
     } catch (err) {
         if (timeline) timeline.innerHTML = `<div class="text-center py-6 text-red-500 font-sans text-xs">Failed to load history: ${err.message}</div>`;
+    }
+}
+
+let currentOverrideVoucher = null;
+
+function openOverrideModal(v) {
+    currentOverrideVoucher = v;
+    const modal = document.getElementById('voucher-override-modal');
+    const subtitle = document.getElementById('override-modal-subtitle');
+    const autoBox = document.getElementById('override-auto-detected');
+    const isIncomeSel = document.getElementById('override-is-income');
+    const buStatusSel = document.getElementById('override-bu-status');
+    const rateSel = document.getElementById('override-rate');
+    const noteInput = document.getElementById('override-note');
+
+    const unitLabel = (v.flat_no && v.flat_no !== 'undefined') ? v.flat_no : (v.unit || '—');
+    const memberLabel = (v.member_name && v.member_name !== 'undefined') ? v.member_name : (v.name || 'Member');
+    if (subtitle) subtitle.textContent = `Vch ${v.vch_no} · ${v.date} · ${unitLabel} · ${memberLabel}`;
+    if (autoBox) autoBox.innerHTML = `<span class="font-bold">Auto-detected:</span> ${v.classification}`;
+
+    if (isIncomeSel) isIncomeSel.value = v.override_is_income === true ? 'true' : (v.override_is_income === false ? 'false' : 'auto');
+    if (buStatusSel) buStatusSel.value = v.override_bu_status || 'auto';
+    if (rateSel) rateSel.value = v.override_rate ? String(v.override_rate) : 'auto';
+    if (noteInput) noteInput.value = v.override_note || '';
+
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeOverrideModal() {
+    const modal = document.getElementById('voucher-override-modal');
+    if (modal) modal.classList.add('hidden');
+    currentOverrideVoucher = null;
+}
+
+async function saveVoucherOverride(clearAll) {
+    if (!currentOverrideVoucher) return;
+    const v = currentOverrideVoucher;
+    const projectSel = document.getElementById('select-voucher-project');
+    const projectCode = projectSel ? projectSel.value : '010010';
+
+    const isIncomeSel = document.getElementById('override-is-income');
+    const buStatusSel = document.getElementById('override-bu-status');
+    const rateSel = document.getElementById('override-rate');
+    const noteInput = document.getElementById('override-note');
+
+    const payload = {
+        project: projectCode,
+        vch_no: v.vch_no,
+        date: v.date,
+        bu_status: clearAll ? 'auto' : (buStatusSel ? buStatusSel.value : 'auto'),
+        rate: clearAll ? null : ((rateSel && rateSel.value !== 'auto') ? parseFloat(rateSel.value) : null),
+        note: clearAll ? '' : (noteInput ? noteInput.value.trim() : '')
+    };
+    if (!clearAll && isIncomeSel && isIncomeSel.value !== 'auto') {
+        payload.is_income = isIncomeSel.value === 'true';
+    }
+
+    const saveBtn = document.getElementById('btn-save-override');
+    const origText = saveBtn ? saveBtn.textContent : '';
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+
+    try {
+        const resp = await fetch('/api/vouchers/override', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.status !== 'success') {
+            alert('Could not save: ' + (data.message || 'Unknown error'));
+            return;
+        }
+        closeOverrideModal();
+        await loadRealVouchers(projectCode);
+    } catch (err) {
+        alert('Network error saving override: ' + err.message);
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = origText; }
     }
 }
 
@@ -1682,6 +1769,28 @@ document.addEventListener('DOMContentLoaded', () => {
     if (unitHistoryModal) {
         unitHistoryModal.addEventListener('click', (e) => {
             if (e.target === unitHistoryModal) unitHistoryModal.classList.add('hidden');
+        });
+    }
+
+    // Voucher classification override modal
+    const btnCloseOverride = document.getElementById('btn-close-override-modal');
+    if (btnCloseOverride) btnCloseOverride.addEventListener('click', closeOverrideModal);
+    const btnCancelOverride = document.getElementById('btn-cancel-override');
+    if (btnCancelOverride) btnCancelOverride.addEventListener('click', closeOverrideModal);
+    const btnSaveOverride = document.getElementById('btn-save-override');
+    if (btnSaveOverride) btnSaveOverride.addEventListener('click', () => saveVoucherOverride(false));
+    const btnClearOverride = document.getElementById('btn-clear-override');
+    if (btnClearOverride) {
+        btnClearOverride.addEventListener('click', () => {
+            if (confirm('Clear all manual overrides for this voucher and revert to auto-detected classification?')) {
+                saveVoucherOverride(true);
+            }
+        });
+    }
+    const overrideModal = document.getElementById('voucher-override-modal');
+    if (overrideModal) {
+        overrideModal.addEventListener('click', (e) => {
+            if (e.target === overrideModal) closeOverrideModal();
         });
     }
 });

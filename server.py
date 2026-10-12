@@ -159,28 +159,45 @@ def enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg):
         is_cancelled = is_cancelled_booking(party_val, raw_val, narr_val)
         is_plausible = is_plausible_receipt_amount(amt)
         has_unit = classify_voucher_income(unit_val, party_val, raw_val, narr_val, amount=amt if is_plausible else None)
-        # BU exemption: the explicit 'After Bu' ledger tag (added by CA staff, who know per-unit
-        # when each was actually sold) is the authoritative signal here - NOT a blind date
-        # comparison. compute_unit_bu_status's earliest-payment-date test is only trustworthy
-        # when the synced history actually reaches back to a unit's true booking date; this
-        # dataset's sync window starts ~13 months after the BU date itself, so "no payment
-        # before BU in what we've synced" proves nothing about when the unit was really booked.
-        # Verified on real data: blindly trusting that date signal wrongly exempted Rs.1.17 Cr of
-        # genuine pre-BU installments that simply had no earlier tagged history in this sync.
-        # Defaulting an uncertain case to "exempt" understates GST liability, which is the more
-        # dangerous direction for compliance - so untagged vouchers are taxable unless proven
-        # otherwise. unit_bu_status is still computed and returned by the caller for display,
-        # but does not feed exemption decisions.
-        is_after_bu = is_after_bu_member(party_val, raw_val, narr_val) or is_ex
-        # Not tagged, but this specific voucher's OWN date falls after the BU permission date:
-        # a real signal worth surfacing, but not proof of a post-BU booking on its own (see the
-        # long comment above) - so it's flagged for the CA to confirm rather than silently taxed
-        # or silently exempted either way.
-        date_suggests_after_bu = (not is_after_bu) and is_voucher_after_bu_date(v_date, has_bu, bu_date_str)
-        is_income = not is_creditor and not is_cancelled and is_plausible and has_unit
-        unit_rate = unit_rates.get(unit_val, rate_cfg["default_residential_rate"])
+        # BU exemption priority chain:
+        #   1. Explicit 'After Bu' ledger tag (CA staff's own record of which units were sold
+        #      post-BU) - the strongest signal, used as-is.
+        #   2. The unit's first-ever payment date vs. the BU permission date (compute_unit_bu_status)
+        #      - a weaker signal, since it's only as reliable as how far back the synced Tally
+        #      history reaches. Kept distinguishable (its own badge/classification) rather than
+        #      merged into the confident tag-based bucket, so the CA can spot and correct it.
+        #   3. The pencil-edit manual override (below) always wins over both.
+        tag_after_bu = is_after_bu_member(party_val, raw_val, narr_val) or is_ex
+        date_after_bu = (not tag_after_bu) and unit_bu_status.get(unit_val, False)
+        is_after_bu = tag_after_bu or date_after_bu
 
-        if is_creditor:
+        # CA manual overrides (set via the dashboard's pencil-edit) take priority over every
+        # auto-detected signal above.
+        override_bu_status = v.get("override_bu_status")
+        override_is_income_raw = v.get("override_is_income")
+        override_rate = v.get("override_rate")
+        override_note = (v.get("override_note") or "").strip()
+
+        manually_excluded = False
+        if override_is_income_raw is not None:
+            if bool(override_is_income_raw):
+                is_creditor = is_cancelled = False
+                is_plausible = has_unit = True
+            else:
+                manually_excluded = True
+        if override_bu_status == "after_bu":
+            is_after_bu = True
+        elif override_bu_status == "before_bu":
+            is_after_bu = False
+
+        is_income = (not manually_excluded) and not is_creditor and not is_cancelled and is_plausible and has_unit
+        unit_rate = float(override_rate) if override_rate else unit_rates.get(unit_val, rate_cfg["default_residential_rate"])
+
+        if manually_excluded:
+            badge_type = "excluded_manual"
+            classification = "Excluded by CA" + (f" ({override_note})" if override_note else "")
+            taxable_amt = 0.0
+        elif is_creditor:
             badge_type, classification, taxable_amt = "creditor", "Vendor / Creditor (Excluded)", 0.0
         elif is_cancelled:
             badge_type, classification, taxable_amt = "cancelled", "Cancelled / Refunded Booking (Excluded)", 0.0
@@ -189,27 +206,31 @@ def enrich_and_classify_vouchers(db_rows, has_bu, bu_date_str, rate_cfg):
         elif not has_unit:
             badge_type, classification, taxable_amt = "expense", "Purchase / Expense", 0.0
         elif is_after_bu:
-            badge_type, classification, taxable_amt = "exempt", "Exempt Post-BU (Schedule III)", 0.0
+            taxable_amt = 0.0
+            if override_bu_status == "after_bu":
+                badge_type, classification = "exempt", "Exempt Post-BU (Schedule III) [CA Confirmed]"
+            elif tag_after_bu:
+                badge_type, classification = "exempt", "Exempt Post-BU (Schedule III)"
+            else:
+                badge_type, classification = "exempt_date_review", "Exempt Post-BU (Date-Based - Please Verify)"
         else:
             inc_tax = calculate_inclusive_tax(amt, rate=unit_rate)
             taxable_amt = inc_tax["taxable_base"]
-            if date_suggests_after_bu:
-                badge_type = "bu_review"
-                classification = f"Taxable @ {unit_rate*100:g}% - Date is Post-BU, Not Tagged (Confirm with CA)"
-            else:
-                badge_type = "taxable-1" if unit_rate <= 0.01 else "taxable-5"
-                classification = f"Taxable Advance Receipt ({unit_rate*100:g}% Inclusive)"
+            badge_type = "taxable-1" if unit_rate <= 0.01 else "taxable-5"
+            suffix = " [CA Set Rate]" if override_rate else (" [CA Confirmed]" if override_bu_status == "before_bu" else "")
+            classification = f"Taxable Advance Receipt ({unit_rate*100:g}% Inclusive){suffix}"
 
         v["_is_creditor"] = is_creditor
         v["_is_cancelled"] = is_cancelled
         v["_is_plausible"] = is_plausible
         v["_is_after_bu"] = is_after_bu
-        v["_date_suggests_after_bu"] = date_suggests_after_bu
+        v["_date_after_bu"] = date_after_bu
         v["_tax_rate"] = unit_rate
         v["_is_income"] = is_income
         v["_taxable_amount"] = taxable_amt
         v["_classification"] = classification
         v["_badge_type"] = badge_type
+        v["_has_override"] = bool(override_bu_status or override_is_income_raw is not None or override_rate)
         out.append(v)
     return out
 
@@ -1185,9 +1206,11 @@ def api_vouchers():
             is_creditor = r["_is_creditor"]
 
             type_label = "Member Receipt" if is_income else (
-                "Vendor / Creditor" if is_creditor else (
-                    "Cancelled / Refunded" if r["_is_cancelled"] else (
-                        "Needs Review" if not r["_is_plausible"] else "Purchase / Expense"
+                "Excluded by CA" if r["_badge_type"] == "excluded_manual" else (
+                    "Vendor / Creditor" if is_creditor else (
+                        "Cancelled / Refunded" if r["_is_cancelled"] else (
+                            "Needs Review" if not r["_is_plausible"] else "Purchase / Expense"
+                        )
                     )
                 )
             )
@@ -1208,7 +1231,12 @@ def api_vouchers():
                 "classification": r["_classification"],
                 "badge_type": r["_badge_type"],
                 "is_income": is_income,
-                "type": type_label
+                "type": type_label,
+                "has_override": r["_has_override"],
+                "override_bu_status": r.get("override_bu_status"),
+                "override_is_income": r.get("override_is_income"),
+                "override_rate": r.get("override_rate"),
+                "override_note": r.get("override_note")
             })
     except Exception as e:
         print("[DB Fetch Notice]:", e)
@@ -1516,6 +1544,51 @@ def api_unit_history():
         "cancelled_total": cancelled_total,
         "transfer_notes": transfer_notes
     })
+
+@app.route("/api/vouchers/override", methods=["POST"])
+def api_vouchers_override():
+    """
+    CA manual correction for one voucher's classification, applied via the dashboard's
+    pencil-edit control. Auto-detection (BU tag/date, creditor keywords, amount plausibility)
+    is always the default for every voucher; this only steers enrich_and_classify_vouchers
+    for the specific voucher identified by (project, vch_no, date) when the CA has confirmed
+    or corrected something the heuristics got wrong. Never touches amount/party/narration or
+    deletes anything - only sets override_bu_status/override_is_income/override_rate/
+    override_note on that one row. Passing "auto"/null for a field clears that override.
+    """
+    data = request.get_json() or {}
+    project = str(data.get("project", "")).strip()
+    vch_no = str(data.get("vch_no", "")).strip()
+    date = str(data.get("date", "")).strip()
+
+    if not project or not vch_no or not date:
+        return jsonify({"status": "error", "message": "project, vch_no, and date are required"}), 400
+
+    PROJECTS_METADATA = get_projects_metadata()
+    pcfg = PROJECTS_METADATA.get(project)
+    target_key = pcfg["code"] if pcfg else project
+
+    bu_status = data.get("bu_status")
+    if bu_status not in (None, "auto", "before_bu", "after_bu"):
+        return jsonify({"status": "error", "message": "bu_status must be auto, before_bu, or after_bu"}), 400
+
+    is_income = data.get("is_income")
+    if is_income is not None and not isinstance(is_income, bool):
+        return jsonify({"status": "error", "message": "is_income must be true, false, or omitted"}), 400
+
+    rate = data.get("rate")
+    if rate is not None:
+        try:
+            rate = float(rate)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "rate must be a number (e.g. 0.01 for 1%)"}), 400
+
+    note = str(data.get("note") or "").strip()[:255]
+
+    ok = db.set_voucher_override(target_key, vch_no, date, bu_status=bu_status, is_income=is_income, rate=rate, note=note)
+    if not ok:
+        return jsonify({"status": "error", "message": "Voucher not found for that project/vch_no/date"}), 404
+    return jsonify({"status": "success"})
 
 @app.route("/api/vouchers/sync", methods=["POST"])
 def api_vouchers_sync():

@@ -205,6 +205,35 @@ class DatabaseManager:
         except Exception as e:
             print(f"[DatabaseManager] Schema init warning: {e}")
 
+        self._migrate_voucher_override_columns()
+
+    def _migrate_voucher_override_columns(self):
+        """Adds the CA manual-override columns to an already-existing vouchers table
+        (CREATE TABLE IF NOT EXISTS above only helps on a brand new DB). Lets the CA
+        directly correct a voucher's BU status, income/exclusion, or GST rate from the
+        dashboard, overriding the auto-classification in enrich_and_classify_vouchers."""
+        columns = [
+            ("override_bu_status", "VARCHAR(20)" if self.is_postgres else "TEXT"),
+            ("override_is_income", "BOOLEAN" if self.is_postgres else "INTEGER"),
+            ("override_rate", "NUMERIC(6,4)" if self.is_postgres else "REAL"),
+            ("override_note", "VARCHAR(255)" if self.is_postgres else "TEXT"),
+        ]
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    for col, col_type in columns:
+                        cur.execute(f"ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS {col} {col_type};")
+                else:
+                    cur.execute("PRAGMA table_info(vouchers);")
+                    existing = {row[1] for row in cur.fetchall()}
+                    for col, col_type in columns:
+                        if col not in existing:
+                            cur.execute(f"ALTER TABLE vouchers ADD COLUMN {col} {col_type};")
+                conn.commit()
+        except Exception as e:
+            print(f"[DatabaseManager] Override column migration warning: {e}")
+
     def seed_projects_from_file(self, config_path):
         """Seed project master data into database if empty."""
         if not os.path.exists(config_path):
@@ -548,6 +577,40 @@ class DatabaseManager:
         except Exception as e:
             print(f"[DatabaseManager] Error fetching vouchers for {project_code}: {e}")
         return vouchers
+
+    def set_voucher_override(self, project_code, voucher_number, date, bu_status=None, is_income=None, rate=None, note=None):
+        """
+        CA manual correction for a single voucher, identified the same way save_vouchers
+        upserts it (project_code, voucher_number, date). All fields are optional and
+        independent: pass only the ones being changed. Passing the literal string "auto"
+        for bu_status, or None for is_income/rate, clears that override back to
+        auto-classification. Never deletes or touches amount/party/narration - this only
+        steers enrich_and_classify_vouchers's decision for this one voucher.
+        """
+        if bu_status == "auto":
+            bu_status = None
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                args = (bu_status, is_income, rate, note, project_code, voucher_number, date)
+                if self.is_postgres:
+                    cur.execute("""
+                        UPDATE vouchers SET override_bu_status = %s, override_is_income = %s,
+                            override_rate = %s, override_note = %s
+                        WHERE project_code = %s AND voucher_number = %s AND date = %s;
+                    """, args)
+                else:
+                    cur.execute("""
+                        UPDATE vouchers SET override_bu_status = ?, override_is_income = ?,
+                            override_rate = ?, override_note = ?
+                        WHERE project_code = ? AND voucher_number = ? AND date = ?;
+                    """, args)
+                updated = cur.rowcount
+                conn.commit()
+                return updated > 0
+        except Exception as e:
+            print(f"[DatabaseManager] Error setting voucher override: {e}")
+            return False
 
     def fix_flat_name_parsing(self):
         """

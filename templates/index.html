@@ -620,6 +620,7 @@
                   <th class="py-2.5 px-3">Type</th>
                   <th class="py-2.5 px-3 text-right">Amount (₹)</th>
                   <th class="py-2.5 px-4">Statutory GST Classification</th>
+                  <th class="py-2.5 px-2 text-center">Edit</th>
                 </tr>
               </thead>
               <tbody id="voucher-table-body" class="divide-y divide-slate-100 font-mono">
@@ -1118,6 +1119,71 @@
           <div id="unit-history-owners" class="px-5 py-3 border-b border-slate-100 flex flex-wrap gap-1.5"></div>
           <div id="unit-history-transfer-notes" class="px-5 pt-3"></div>
           <div id="unit-history-timeline" class="overflow-y-auto table-scrollbar flex-1 p-5 flex flex-col gap-4"></div>
+        </div>
+      </div>
+
+      <!-- Voucher Classification Override Modal -->
+      <div id="voucher-override-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+          <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+            <div>
+              <h3 class="font-display text-base font-extrabold text-slate-900">Correct Classification</h3>
+              <p id="override-modal-subtitle" class="text-xs text-slate-500 font-medium mt-0.5">Vch —</p>
+            </div>
+            <button id="btn-close-override-modal" type="button" class="p-2 rounded-xl hover:bg-slate-200 text-slate-500 transition-colors">
+              <span class="material-symbols-outlined text-[20px]">close</span>
+            </button>
+          </div>
+          <div class="p-5 flex flex-col gap-4">
+            <div id="override-auto-detected" class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2"></div>
+
+            <div>
+              <label class="text-xs font-bold text-slate-600 block mb-1.5">Is this genuine flat/shop owner income?</label>
+              <select id="override-is-income" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium">
+                <option value="auto">Auto-detected (default)</option>
+                <option value="true">Yes - count as income</option>
+                <option value="false">No - exclude from income</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="text-xs font-bold text-slate-600 block mb-1.5">BU Status</label>
+              <select id="override-bu-status" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium">
+                <option value="auto">Auto-detected (default)</option>
+                <option value="before_bu">Before BU (Taxable)</option>
+                <option value="after_bu">After BU (Exempt)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="text-xs font-bold text-slate-600 block mb-1.5">GST Rate</label>
+              <select id="override-rate" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium">
+                <option value="auto">Auto-detected (default)</option>
+                <option value="0.01">1% (Affordable Residential)</option>
+                <option value="0.05">5% (Standard / Commercial)</option>
+                <option value="0.12">12% (Commercial, Abated)</option>
+                <option value="0.18">18% (Commercial)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="text-xs font-bold text-slate-600 block mb-1.5">Note (optional)</label>
+              <input id="override-note" type="text" maxlength="255" placeholder="e.g. Confirmed with site office - sold post-BU" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm"/>
+            </div>
+          </div>
+          <div class="px-5 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+            <button id="btn-clear-override" type="button" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-200 transition-colors">
+              Clear All Overrides
+            </button>
+            <div class="flex items-center gap-2">
+              <button id="btn-cancel-override" type="button" class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors">
+                Cancel
+              </button>
+              <button id="btn-save-override" type="button" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-xs">
+                Save
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
