@@ -2274,5 +2274,207 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // =========================================================================
+    // PROJECT PLAN & UNIT INVENTORY (GENERATOR & EXCEL UPLOAD) WIRING
+    // =========================================================================
+    const modalProjectPlan = document.getElementById('modal-project-plan');
+    const btnOpenPlanModal = document.getElementById('btn-open-plan-modal');
+    const btnProjectsTabOpenPlan = document.getElementById('btn-projects-tab-open-plan');
+    const btnClosePlanModal = document.getElementById('btn-close-plan-modal');
+    const btnCancelPlanModal = document.getElementById('btn-cancel-plan-modal');
+    const btnCancelPlanModal2 = document.getElementById('btn-cancel-plan-modal-2');
+    const planSelectProject = document.getElementById('plan-select-project');
+
+    const btnPlanTabGen = document.getElementById('btn-plan-tab-gen');
+    const btnPlanTabUp = document.getElementById('btn-plan-tab-up');
+    const panePlanGen = document.getElementById('pane-plan-gen');
+    const panePlanUpload = document.getElementById('pane-plan-upload');
+
+    const populatePlanProjectDropdown = () => {
+        if (!planSelectProject) return;
+        const headerSelect = document.getElementById('select-header-project') || document.getElementById('select-units-project');
+        if (headerSelect && headerSelect.options.length > 0) {
+            planSelectProject.innerHTML = '';
+            for (let opt of headerSelect.options) {
+                const newOpt = document.createElement('option');
+                newOpt.value = opt.value;
+                newOpt.textContent = opt.textContent;
+                planSelectProject.appendChild(newOpt);
+            }
+        }
+        const activeUnitsProject = document.getElementById('select-units-project')?.value;
+        if (activeUnitsProject && planSelectProject) {
+            planSelectProject.value = activeUnitsProject;
+        }
+    };
+
+    const openProjectPlanModal = () => {
+        populatePlanProjectDropdown();
+        if (modalProjectPlan) {
+            modalProjectPlan.classList.remove('hidden');
+            modalProjectPlan.style.display = 'flex';
+        }
+    };
+
+    const closeProjectPlanModal = () => {
+        if (modalProjectPlan) {
+            modalProjectPlan.classList.add('hidden');
+            modalProjectPlan.style.display = 'none';
+        }
+    };
+
+    if (btnOpenPlanModal) btnOpenPlanModal.addEventListener('click', openProjectPlanModal);
+    if (btnProjectsTabOpenPlan) btnProjectsTabOpenPlan.addEventListener('click', openProjectPlanModal);
+    if (btnClosePlanModal) btnClosePlanModal.addEventListener('click', closeProjectPlanModal);
+    if (btnCancelPlanModal) btnCancelPlanModal.addEventListener('click', closeProjectPlanModal);
+    if (btnCancelPlanModal2) btnCancelPlanModal2.addEventListener('click', closeProjectPlanModal);
+
+    // Tab switcher
+    if (btnPlanTabGen && btnPlanTabUp && panePlanGen && panePlanUpload) {
+        btnPlanTabGen.addEventListener('click', () => {
+            btnPlanTabGen.className = 'flex-1 py-2 px-3 rounded-lg text-center transition-all bg-white text-indigo-700 shadow-xs';
+            btnPlanTabUp.className = 'flex-1 py-2 px-3 rounded-lg text-center transition-all text-slate-600 hover:text-slate-900';
+            panePlanGen.classList.remove('hidden');
+            panePlanUpload.classList.add('hidden');
+        });
+        btnPlanTabUp.addEventListener('click', () => {
+            btnPlanTabUp.className = 'flex-1 py-2 px-3 rounded-lg text-center transition-all bg-white text-indigo-700 shadow-xs';
+            btnPlanTabGen.className = 'flex-1 py-2 px-3 rounded-lg text-center transition-all text-slate-600 hover:text-slate-900';
+            panePlanUpload.classList.remove('hidden');
+            panePlanGen.classList.add('hidden');
+        });
+    }
+
+    // Live calculation for Rapid Generator
+    const updatePlanSummary = () => {
+        const blocksVal = (document.getElementById('plan-input-blocks')?.value || 'A').split(',').map(s => s.trim()).filter(Boolean);
+        const startFl = parseInt(document.getElementById('plan-input-start-floor')?.value || '1', 10);
+        const endFl = parseInt(document.getElementById('plan-input-end-floor')?.value || '14', 10);
+        const flatsPerFl = parseInt(document.getElementById('plan-input-flats-per-floor')?.value || '4', 10);
+
+        const numFloors = Math.max(0, (endFl - startFl) + 1);
+        const totalFlats = blocksVal.length * numFloors * flatsPerFl;
+
+        const summaryText = document.getElementById('plan-summary-text');
+        if (summaryText) {
+            summaryText.textContent = `${blocksVal.length} Tower${blocksVal.length > 1 ? 's' : ''} × ${numFloors} Floors × ${flatsPerFl} Flats = ${totalFlats} Total Flats`;
+        }
+    };
+
+    ['plan-input-blocks', 'plan-input-start-floor', 'plan-input-end-floor', 'plan-input-flats-per-floor'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updatePlanSummary);
+    });
+
+    // Submit Rapid Generator
+    const btnSubmitGenPlan = document.getElementById('btn-submit-generate-plan');
+    if (btnSubmitGenPlan) {
+        btnSubmitGenPlan.addEventListener('click', async () => {
+            const projCode = planSelectProject ? planSelectProject.value : '';
+            if (!projCode) {
+                alert('Please select a target project.');
+                return;
+            }
+
+            const blocks = (document.getElementById('plan-input-blocks')?.value || 'A').split(',').map(s => s.trim()).filter(Boolean);
+            const startFl = parseInt(document.getElementById('plan-input-start-floor')?.value || '1', 10);
+            const endFl = parseInt(document.getElementById('plan-input-end-floor')?.value || '14', 10);
+            const flatsPerFl = parseInt(document.getElementById('plan-input-flats-per-floor')?.value || '4', 10);
+            const usage = document.getElementById('plan-input-usage')?.value || 'Residential';
+            const size = parseFloat(document.getElementById('plan-input-size')?.value || '0');
+            const carpet = parseFloat(document.getElementById('plan-input-carpet')?.value || '0');
+
+            btnSubmitGenPlan.disabled = true;
+            btnSubmitGenPlan.innerHTML = '<span class="material-symbols-outlined text-[16px] animate-spin">sync</span> Generating...';
+
+            try {
+                const resp = await fetch('/api/units/generate-plan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_code: projCode,
+                        blocks: blocks,
+                        start_floor: startFl,
+                        end_floor: endFl,
+                        units_per_floor: flatsPerFl,
+                        usage_type: usage,
+                        size_sqft: size,
+                        carpet_sqft: carpet
+                    })
+                });
+                const res = await resp.json();
+                if (res.status === 'success') {
+                    alert(`✅ ${res.message}`);
+                    closeProjectPlanModal();
+                    
+                    // Reload units tab if viewing this project
+                    const unitsProj = document.getElementById('select-units-project');
+                    if (unitsProj) {
+                        unitsProj.value = projCode;
+                        if (typeof loadUnits === 'function') loadUnits(projCode);
+                    }
+                } else {
+                    alert('Error: ' + (res.message || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Network error generating plan: ' + err.message);
+            } finally {
+                btnSubmitGenPlan.disabled = false;
+                btnSubmitGenPlan.innerHTML = '<span class="material-symbols-outlined text-[16px]">domain_add</span><span>Generate & Register Inventory</span>';
+            }
+        });
+    }
+
+    // Submit Excel / CSV Upload
+    const btnSubmitUploadPlan = document.getElementById('btn-submit-upload-plan');
+    if (btnSubmitUploadPlan) {
+        btnSubmitUploadPlan.addEventListener('click', async () => {
+            const projCode = planSelectProject ? planSelectProject.value : '';
+            if (!projCode) {
+                alert('Please select a target project.');
+                return;
+            }
+
+            const fileInput = document.getElementById('plan-file-input');
+            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+                alert('Please select an Excel (.xlsx / .xls) or CSV file to upload.');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('project_code', projCode);
+
+            btnSubmitUploadPlan.disabled = true;
+            btnSubmitUploadPlan.innerHTML = '<span class="material-symbols-outlined text-[16px] animate-spin">sync</span> Uploading & Ingesting...';
+
+            try {
+                const resp = await fetch('/api/units/upload-excel', {
+                    method: 'POST',
+                    body: formData
+                });
+                const res = await resp.json();
+                if (res.status === 'success') {
+                    alert(`✅ ${res.message}`);
+                    closeProjectPlanModal();
+                    
+                    const unitsProj = document.getElementById('select-units-project');
+                    if (unitsProj) {
+                        unitsProj.value = projCode;
+                        if (typeof loadUnits === 'function') loadUnits(projCode);
+                    }
+                } else {
+                    alert('Upload Error: ' + (res.message || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Network error uploading file: ' + err.message);
+            } finally {
+                btnSubmitUploadPlan.disabled = false;
+                btnSubmitUploadPlan.innerHTML = '<span class="material-symbols-outlined text-[16px]">upload_file</span><span>Upload & Ingest Unit Inventory</span>';
+            }
+        });
+    }
 });
 

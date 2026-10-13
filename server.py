@@ -1944,11 +1944,222 @@ def api_units_override_bu():
     target_key = pcfg["code"] if pcfg else project
 
     updated_count = db.set_unit_bu_override(target_key, unit_no, bu_status=bu_status, note=note)
+@app.route("/api/units/sample-template", methods=["GET"])
+def api_units_sample_template():
+    """Generates and downloads a clean Excel template for project unit inventory."""
+    import io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Unit Inventory Master"
+
+    headers = [
+        "Unit No", "Tower / Block", "Floor", "Flat Label",
+        "Usage Type", "Super Built-up Area (sqft)", "RERA Carpet Area (sqft)", "Balcony/Terrace Area (sqft)"
+    ]
+    ws.append(headers)
+
+    # Style Header
+    header_fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    for col_idx, col_name in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    sample_rows = [
+        ["A-101", "A", "1st Floor", "101", "Residential", 1450.0, 850.0, 50.0],
+        ["A-102", "A", "1st Floor", "102", "Residential", 1450.0, 850.0, 50.0],
+        ["A-201", "A", "2nd Floor", "201", "Residential", 1450.0, 850.0, 50.0],
+        ["B-101", "B", "1st Floor", "101", "Residential", 1850.0, 1120.0, 80.0],
+        ["C-G01", "C", "Ground Floor", "G01", "Commercial", 650.0, 520.0, 0.0],
+    ]
+    for r in sample_rows:
+        ws.append(r)
+
+    # Column widths
+    col_widths = [14, 16, 14, 14, 16, 26, 24, 26]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+
+    from flask import send_file
+    return send_file(
+        bio,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="Sun_Builders_Unit_Inventory_Template.xlsx"
+    )
+
+@app.route("/api/units/upload-excel", methods=["POST"])
+def api_units_upload_excel():
+    """Uploads an Excel or CSV file containing unit inventory for a project."""
+    if "file" not in request.files:
+        return jsonify({"status": "error", "message": "No file uploaded."}), 400
+
+    file = request.files["file"]
+    project_code = str(request.form.get("project_code") or request.form.get("project", "")).strip()
+    if not project_code:
+        return jsonify({"status": "error", "message": "Project code is required."}), 400
+
+    filename = file.filename or ""
+    if not (filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv")):
+        return jsonify({"status": "error", "message": "Only Excel (.xlsx, .xls) and CSV files are supported."}), 400
+
+    units = []
+    try:
+        if filename.endswith(".csv"):
+            import csv
+            import io
+            stream = io.StringIO(file.stream.read().decode("utf-8-sig", errors="ignore"))
+            reader = csv.DictReader(stream)
+            for row in reader:
+                r_clean = {k.strip().lower(): str(v or "").strip() for k, v in row.items() if k}
+                unit_no = r_clean.get("unit no") or r_clean.get("unit") or r_clean.get("unit_no") or r_clean.get("flat no") or r_clean.get("flat")
+                if not unit_no:
+                    continue
+                block = r_clean.get("tower / block") or r_clean.get("block") or r_clean.get("tower") or r_clean.get("wing") or ""
+                floor = r_clean.get("floor") or ""
+                flat_label = r_clean.get("flat label") or r_clean.get("flat_label") or unit_no.split("-")[-1]
+                usage = r_clean.get("usage type") or r_clean.get("usage") or r_clean.get("type") or "Residential"
+                size = float(r_clean.get("super built-up area (sqft)") or r_clean.get("size_sqft") or r_clean.get("size") or 0)
+                carpet = float(r_clean.get("rera carpet area (sqft)") or r_clean.get("carpet_sqft") or r_clean.get("carpet") or 0)
+                terrace = float(r_clean.get("balcony/terrace area (sqft)") or r_clean.get("terrace_sqft") or r_clean.get("terrace") or 0)
+                units.append({
+                    "unit_no": unit_no.upper(),
+                    "block": block.upper(),
+                    "flat_label": flat_label,
+                    "floor": floor,
+                    "usage_type": usage,
+                    "office_no": "",
+                    "size_sqft": size,
+                    "carpet_sqft": carpet,
+                    "terrace_sqft": terrace
+                })
+        else:
+            import openpyxl
+            wb = openpyxl.load_workbook(file.stream, data_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+            if not rows:
+                return jsonify({"status": "error", "message": "Uploaded Excel sheet is empty."}), 400
+
+            header_row = [str(c or "").strip().lower() for c in rows[0]]
+            def find_idx(*keywords):
+                for kw in keywords:
+                    for idx, h in enumerate(header_row):
+                        if kw in h:
+                            return idx
+                return None
+
+            idx_unit = find_idx("unit no", "unit_no", "flat no", "unit", "flat")
+            idx_block = find_idx("tower", "block", "wing")
+            idx_floor = find_idx("floor")
+            idx_label = find_idx("flat label", "label")
+            idx_usage = find_idx("usage", "type", "category")
+            idx_size = find_idx("super", "built", "size")
+            idx_carpet = find_idx("carpet", "rera")
+            idx_terrace = find_idx("balcony", "terrace")
+
+            if idx_unit is None:
+                return jsonify({"status": "error", "message": "Could not find 'Unit No' column in uploaded sheet."}), 400
+
+            for r in rows[1:]:
+                if not r or idx_unit >= len(r) or not r[idx_unit]:
+                    continue
+                unit_no = str(r[idx_unit]).strip().upper()
+                block = str(r[idx_block]).strip().upper() if idx_block is not None and idx_block < len(r) and r[idx_block] else ""
+                floor = str(r[idx_floor]).strip() if idx_floor is not None and idx_floor < len(r) and r[idx_floor] else ""
+                flat_label = str(r[idx_label]).strip() if idx_label is not None and idx_label < len(r) and r[idx_label] else unit_no.split("-")[-1]
+                usage = str(r[idx_usage]).strip() if idx_usage is not None and idx_usage < len(r) and r[idx_usage] else "Residential"
+                size = float(r[idx_size] or 0) if idx_size is not None and idx_size < len(r) and str(r[idx_size]).replace(".", "", 1).isdigit() else 0.0
+                carpet = float(r[idx_carpet] or 0) if idx_carpet is not None and idx_carpet < len(r) and str(r[idx_carpet]).replace(".", "", 1).isdigit() else 0.0
+                terrace = float(r[idx_terrace] or 0) if idx_terrace is not None and idx_terrace < len(r) and str(r[idx_terrace]).replace(".", "", 1).isdigit() else 0.0
+
+                units.append({
+                    "unit_no": unit_no,
+                    "block": block,
+                    "flat_label": flat_label,
+                    "floor": floor,
+                    "usage_type": usage,
+                    "office_no": "",
+                    "size_sqft": size,
+                    "carpet_sqft": carpet,
+                    "terrace_sqft": terrace
+                })
+
+        if not units:
+            return jsonify({"status": "error", "message": "No valid unit rows found in file."}), 400
+
+        saved_count = db.save_units(project_code, units)
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully imported {saved_count} units into {project_code} inventory!",
+            "count": saved_count
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Error parsing uploaded file: {str(e)}"}), 500
+
+@app.route("/api/units/generate-plan", methods=["POST"])
+def api_units_generate_plan():
+    """Generates complete unit inventory based on towers, floors, and units per floor."""
+    data = request.get_json() or {}
+    project_code = str(data.get("project_code") or data.get("project", "")).strip()
+    if not project_code:
+        return jsonify({"status": "error", "message": "Project code is required."}), 400
+
+    blocks_raw = data.get("blocks", "A")
+    if isinstance(blocks_raw, list):
+        blocks = [str(b).strip().upper() for b in blocks_raw if str(b).strip()]
+    else:
+        blocks = [b.strip().upper() for b in str(blocks_raw).split(",") if b.strip()]
+    if not blocks:
+        blocks = ["A"]
+
+    try:
+        start_floor = int(data.get("start_floor", 1))
+        end_floor = int(data.get("end_floor", 10))
+        units_per_floor = int(data.get("units_per_floor", 4))
+    except (ValueError, TypeError):
+        return jsonify({"status": "error", "message": "Floors and units per floor must be integers."}), 400
+
+    usage_type = str(data.get("usage_type", "Residential")).strip()
+    try:
+        size_sqft = float(data.get("size_sqft", 0))
+        carpet_sqft = float(data.get("carpet_sqft", 0))
+    except (ValueError, TypeError):
+        size_sqft, carpet_sqft = 0.0, 0.0
+
+    units = []
+    for blk in blocks:
+        for fl in range(start_floor, end_floor + 1):
+            floor_label = f"{fl}st Floor" if fl == 1 else (f"{fl}nd Floor" if fl == 2 else (f"{fl}rd Floor" if fl == 3 else f"{fl}th Floor"))
+            for u_idx in range(1, units_per_floor + 1):
+                flat_num = f"{fl}{u_idx:02d}"
+                unit_no = f"{blk}-{flat_num}" if blk else flat_num
+                units.append({
+                    "unit_no": unit_no,
+                    "block": blk,
+                    "flat_label": flat_num,
+                    "floor": floor_label,
+                    "usage_type": usage_type,
+                    "office_no": "",
+                    "size_sqft": size_sqft,
+                    "carpet_sqft": carpet_sqft,
+                    "terrace_sqft": 0.0
+                })
+
+    saved_count = db.save_units(project_code, units)
     return jsonify({
         "status": "success",
-        "updated_vouchers": updated_count,
-        "unit_no": unit_no,
-        "bu_status": bu_status
+        "message": f"Successfully generated and registered {saved_count} units for project {project_code}!",
+        "count": saved_count
     })
 
 @app.route("/api/vouchers/sync", methods=["POST"])

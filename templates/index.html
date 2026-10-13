@@ -824,6 +824,10 @@
                 <span class="material-symbols-outlined text-[16px]">add_circle</span>
                 <span>Add Project</span>
               </button>
+              <button id="btn-projects-tab-open-plan" type="button" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 hover:bg-indigo-100 text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer" title="Configure towers, floors, flats or upload Excel file">
+                <span class="material-symbols-outlined text-[16px] text-indigo-600">apartment</span>
+                <span>Unit Inventory Plan</span>
+              </button>
               <button class="btn-download-xlsx p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors shadow-xs" title="Export Excel Report">
                 <span class="material-symbols-outlined text-[18px]">download</span>
               </button>
@@ -1041,6 +1045,12 @@
                 <h2 class="font-display text-lg font-extrabold text-slate-900">Block-wise &amp; Unit-wise Ownership and Payment History</h2>
                 <p id="units-tab-subtitle" class="text-xs text-slate-500 font-medium">Unit inventory cross-referenced with synced Tally receipts</p>
               </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btn-open-plan-modal" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 shadow-xs transition-all active:scale-[0.98] cursor-pointer" title="Configure towers, floors, flats or upload Excel file">
+                <span class="material-symbols-outlined text-[17px] text-indigo-600">domain_add</span>
+                <span>Configure / Upload Unit Plan</span>
+              </button>
             </div>
           </div>
 
@@ -2154,6 +2164,152 @@
         </div>
 
       </form>
+    </div>
+  <!-- ===================================================================== -->
+  <!-- MODAL: PROJECT PLAN & UNIT INVENTORY (GENERATOR & EXCEL UPLOAD)       -->
+  <!-- ===================================================================== -->
+  <div id="modal-project-plan" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+      
+      <!-- Header -->
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-slate-50 to-indigo-50/40">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 shadow-xs">
+            <span class="material-symbols-outlined text-[22px]">apartment</span>
+          </div>
+          <div>
+            <h3 class="font-display text-base font-extrabold text-slate-900">Project Plan &amp; Unit Inventory</h3>
+            <p class="text-xs text-slate-500 font-medium">Configure towers, floors, &amp; flats or upload an Excel unit inventory master</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-plan-modal" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+          <span class="material-symbols-outlined text-[20px]">close</span>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 overflow-y-auto space-y-5">
+        
+        <!-- Target Project Selector -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">Select Target Project <span class="text-red-500">*</span></label>
+          <select id="plan-select-project" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-xs">
+            <!-- Dynamically populated or filled with existing options -->
+            <option value="010010">🏢 Sun Footprint (010010)</option>
+            <option value="010011">🏢 Sun Park West (010011)</option>
+            <option value="010000">🏢 Sun Atmosphere (010000)</option>
+            <option value="010009">🏢 Sun Gravitas (010009)</option>
+            <option value="010002">🏢 Sun Silver Spring (010002)</option>
+            <option value="010015">🏢 Lekhambha (010015)</option>
+          </select>
+        </div>
+
+        <!-- Mode Tabs -->
+        <div class="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold">
+          <button type="button" id="btn-plan-tab-gen" class="flex-1 py-2 px-3 rounded-lg text-center transition-all bg-white text-indigo-700 shadow-xs">
+            ⚡ Rapid Tower &amp; Floor Generator
+          </button>
+          <button type="button" id="btn-plan-tab-up" class="flex-1 py-2 px-3 rounded-lg text-center transition-all text-slate-600 hover:text-slate-900">
+            📁 Upload Excel / CSV Master
+          </button>
+        </div>
+
+        <!-- TAB 1: RAPID GENERATOR -->
+        <div id="pane-plan-gen" class="space-y-4">
+          <div class="bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-900 leading-relaxed">
+            Quickly generates flat numbers (e.g. <strong>A-101 ... A-1404</strong>) across all selected towers and floors.
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Towers / Blocks (Comma separated)</label>
+              <input type="text" id="plan-input-blocks" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 uppercase focus:bg-white focus:border-indigo-600" placeholder="e.g. A, B, C or T1, T2" value="A, B" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Property Usage</label>
+              <select id="plan-input-usage" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-indigo-600">
+                <option value="Residential">Residential</option>
+                <option value="Commercial">Commercial / Office</option>
+                <option value="Retail">Retail / Shop</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Start Floor</label>
+              <input type="number" id="plan-input-start-floor" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-indigo-600" value="1" min="1" max="100" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">End Floor</label>
+              <input type="number" id="plan-input-end-floor" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-indigo-600" value="14" min="1" max="100" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Flats per Floor</label>
+              <input type="number" id="plan-input-flats-per-floor" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-indigo-600" value="4" min="1" max="50" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Default Built-up Area (sqft)</label>
+              <input type="number" id="plan-input-size" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-indigo-600" value="1450" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Default RERA Carpet (sqft)</label>
+              <input type="number" id="plan-input-carpet" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-indigo-600" value="850" />
+            </div>
+          </div>
+
+          <!-- Dynamic calculation banner -->
+          <div id="plan-summary-banner" class="p-3 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 flex items-center justify-between">
+            <span class="flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[18px] text-indigo-600">calculate</span>
+              <span id="plan-summary-text">2 Towers × 14 Floors × 4 Flats = 112 Total Flats</span>
+            </span>
+            <span class="text-[11px] font-mono text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg">Format: A-101 ... B-1404</span>
+          </div>
+
+          <div class="pt-2 flex justify-end gap-2.5">
+            <button type="button" id="btn-cancel-plan-modal" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+            <button type="button" id="btn-submit-generate-plan" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-[0.98] cursor-pointer">
+              <span class="material-symbols-outlined text-[16px]">domain_add</span>
+              <span>Generate &amp; Register Inventory</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB 2: EXCEL / CSV UPLOAD -->
+        <div id="pane-plan-upload" class="space-y-4 hidden">
+          <div class="flex items-center justify-between p-3.5 bg-blue-50 border border-blue-200 rounded-xl">
+            <div>
+              <div class="text-xs font-bold text-blue-900">Need the standard spreadsheet format?</div>
+              <div class="text-[11px] text-blue-700">Columns: Unit No, Tower/Block, Floor, Flat Label, Usage, Size, Carpet Area</div>
+            </div>
+            <a href="/api/units/sample-template" download class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 text-xs font-bold shadow-xs hover:bg-blue-50 transition-colors">
+              <span class="material-symbols-outlined text-[15px]">download</span>
+              <span>Download Template</span>
+            </a>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">Upload Excel (.xlsx / .xls) or CSV Sheet</label>
+            <input type="file" id="plan-file-input" accept=".xlsx, .xls, .csv" class="w-full text-xs text-slate-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 border border-slate-300 rounded-xl p-1 bg-slate-50 cursor-pointer" />
+          </div>
+
+          <div id="plan-upload-status" class="hidden text-xs p-3 rounded-xl"></div>
+
+          <div class="pt-2 flex justify-end gap-2.5">
+            <button type="button" id="btn-cancel-plan-modal-2" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+            <button type="button" id="btn-submit-upload-plan" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-[0.98] cursor-pointer">
+              <span class="material-symbols-outlined text-[16px]">upload_file</span>
+              <span>Upload &amp; Ingest Unit Inventory</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
     </div>
   </div>
 
