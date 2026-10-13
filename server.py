@@ -1545,6 +1545,16 @@ def api_unit_history():
 
     has_bu = pcfg.get("has_bu", False) if pcfg else False
     bu_date_str = pcfg.get("bu_permission_date") if pcfg else None
+    formatted_bu_date = None
+    if bu_date_str:
+        try:
+            parts = bu_date_str.split("-")
+            if len(parts) == 3 and len(parts[0]) == 4:
+                formatted_bu_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
+            else:
+                formatted_bu_date = bu_date_str
+        except Exception:
+            formatted_bu_date = bu_date_str
 
     voucher_rows = db.get_vouchers(target_key)
     rate_cfg = get_project_rate_config(target_key)
@@ -1718,7 +1728,10 @@ def api_unit_history():
         "rate_label": rate_label,
         "rate_pct": round(unit_rate * 100, 2),
         "has_bu": has_bu,
-        "bu_date": bu_date_str,
+        "bu_date": formatted_bu_date or bu_date_str,
+        "bu_date_raw": bu_date_str,
+        "bu_reference_no": pcfg.get("bu_reference_no", "") if pcfg else "",
+        "authority": pcfg.get("authority", "") if pcfg else "",
         "summary": {
             "voucher_count": len(matched),
             "income_count": income_count,

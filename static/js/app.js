@@ -736,6 +736,26 @@ async function openUnitHistory(projectKey, unitNo) {
             rateBadge.textContent = data.rate_label || `${data.rate_pct}% Rate`;
         }
 
+        const buDateBadge = document.getElementById('unit-modal-bu-date-badge');
+        const buDateText = document.getElementById('unit-modal-bu-date-text');
+        const buDateSub = document.getElementById('unit-modal-bu-date-sub');
+
+        if (data.has_bu && data.bu_date) {
+            if (buDateBadge) {
+                buDateBadge.classList.remove('hidden');
+                buDateBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1 shadow-xs';
+            }
+            if (buDateText) buDateText.textContent = `BU Permission: ${data.bu_date}`;
+            if (buDateSub) buDateSub.textContent = data.bu_date;
+        } else {
+            if (buDateBadge) {
+                buDateBadge.classList.remove('hidden');
+                buDateBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1 shadow-xs';
+            }
+            if (buDateText) buDateText.textContent = 'Under Construction (No BU)';
+            if (buDateSub) buDateSub.textContent = 'Under Construction (No BU)';
+        }
+
         if (specsEl) {
             const m = data.unit_meta || {};
             const parts = [];
@@ -825,14 +845,14 @@ async function openUnitHistory(projectKey, unitNo) {
         currentUnitVouchersList = data.vouchers || [];
         if (vchCountBadge) vchCountBadge.textContent = currentUnitVouchersList.length;
 
-        renderUnitVouchersTable(currentUnitVouchersList, data.project_key);
+        renderUnitVouchersTable(currentUnitVouchersList, data.project_key, data.bu_date);
 
         // Setup live search within modal
         if (searchInput) {
             searchInput.oninput = (e) => {
                 const q = (e.target.value || '').toLowerCase().trim();
                 if (!q) {
-                    renderUnitVouchersTable(currentUnitVouchersList, data.project_key);
+                    renderUnitVouchersTable(currentUnitVouchersList, data.project_key, data.bu_date);
                 } else {
                     const filtered = currentUnitVouchersList.filter(v =>
                         (v.date || '').toLowerCase().includes(q) ||
@@ -842,7 +862,7 @@ async function openUnitHistory(projectKey, unitNo) {
                         (v.classification || '').toLowerCase().includes(q) ||
                         String(v.amount || '').includes(q)
                     );
-                    renderUnitVouchersTable(filtered, data.project_key);
+                    renderUnitVouchersTable(filtered, data.project_key, data.bu_date);
                 }
             };
         }
@@ -883,7 +903,7 @@ async function openUnitHistory(projectKey, unitNo) {
     }
 }
 
-function renderUnitVouchersTable(vouchers, projectCode) {
+function renderUnitVouchersTable(vouchers, projectCode, buDateStr) {
     const tableBody = document.getElementById('unit-modal-table-body');
     if (!tableBody) return;
 
@@ -891,6 +911,17 @@ function renderUnitVouchersTable(vouchers, projectCode) {
         tableBody.innerHTML = `<tr><td colspan="10" class="text-center py-8 text-slate-400 font-sans">No vouchers found matching the filter</td></tr>`;
         return;
     }
+
+    const parseDMY = (d) => {
+        if (!d) return null;
+        const p = String(d).split('-');
+        if (p.length === 3) {
+            if (p[0].length === 4) return new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+            return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+        }
+        return null;
+    };
+    const buDt = parseDMY(buDateStr);
 
     tableBody.innerHTML = vouchers.map((v, idx) => {
         let badgeHtml = '';
@@ -916,6 +947,16 @@ function renderUnitVouchersTable(vouchers, projectCode) {
             badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-surface-container text-on-surface border border-outline-variant font-medium">${v.classification}</span>`;
         }
 
+        const vDt = parseDMY(v.date);
+        let buTagHtml = '';
+        if (buDt && vDt) {
+            if (vDt >= buDt) {
+                buTagHtml = `<div class="text-[10.5px] text-emerald-700 font-bold flex items-center gap-1 mt-0.5" title="Payment on ${v.date} received AFTER BU Permission (${buDateStr})"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>Post-BU</div>`;
+            } else {
+                buTagHtml = `<div class="text-[10.5px] text-amber-700 font-bold flex items-center gap-1 mt-0.5" title="Payment on ${v.date} received BEFORE BU Permission (${buDateStr})"><span class="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>Pre-BU</div>`;
+            }
+        }
+
         const amtFmt = Number(v.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
         const taxBaseFmt = Number(v.taxable_amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
         const gstFmt = Number(v.total_tax || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -923,7 +964,10 @@ function renderUnitVouchersTable(vouchers, projectCode) {
 
         return `
             <tr class="hover:bg-slate-50/80 transition-colors">
-                <td class="py-2.5 px-3 text-on-surface">${v.date || '—'}</td>
+                <td class="py-2.5 px-3 text-on-surface">
+                    <div class="font-mono font-medium">${v.date || '—'}</div>
+                    ${buTagHtml}
+                </td>
                 <td class="py-2.5 px-3 text-primary font-bold font-mono">${v.vch_no || '—'}</td>
                 <td class="py-2.5 px-3 font-sans text-xs text-on-surface-variant font-medium">${v.type || 'Receipt'}</td>
                 <td class="py-2.5 px-4 font-sans text-on-surface font-medium">${v.party_name || '—'}</td>
