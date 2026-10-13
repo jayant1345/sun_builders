@@ -2127,5 +2127,152 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target === overrideModal) closeOverrideModal();
         });
     }
+
+    // Add New Project Modal Wiring
+    const btnOpenAddProject = document.getElementById('btn-open-add-project-modal');
+    const modalAddProject = document.getElementById('modal-add-project');
+    const btnCloseAddProject = document.getElementById('btn-close-add-project');
+    const btnCancelAddProject = document.getElementById('btn-cancel-add-project');
+    const btnSubmitAddProject = document.getElementById('btn-submit-add-project');
+    const addBuRadioYes = document.getElementById('add-bu-radio-yes');
+    const addBuRadioNo = document.getElementById('add-bu-radio-no');
+    const addBuDetails = document.getElementById('add-bu-details');
+
+    if (addBuRadioYes && addBuRadioNo && addBuDetails) {
+        addBuRadioYes.addEventListener('change', () => {
+            if (addBuRadioYes.checked) addBuDetails.classList.remove('hidden');
+        });
+        addBuRadioNo.addEventListener('change', () => {
+            if (addBuRadioNo.checked) addBuDetails.classList.add('hidden');
+        });
+    }
+
+    const openAddProjectModal = () => {
+        if (modalAddProject) {
+            modalAddProject.classList.remove('hidden');
+            modalAddProject.style.display = 'flex';
+        }
+    };
+    const closeAddProjectModal = () => {
+        if (modalAddProject) {
+            modalAddProject.classList.add('hidden');
+            modalAddProject.style.display = 'none';
+        }
+    };
+
+    if (btnOpenAddProject) btnOpenAddProject.addEventListener('click', openAddProjectModal);
+    if (btnCloseAddProject) btnCloseAddProject.addEventListener('click', closeAddProjectModal);
+    if (btnCancelAddProject) btnCancelAddProject.addEventListener('click', closeAddProjectModal);
+    if (modalAddProject) {
+        modalAddProject.addEventListener('click', (e) => {
+            if (e.target === modalAddProject) closeAddProjectModal();
+        });
+    }
+
+    if (btnSubmitAddProject) {
+        btnSubmitAddProject.addEventListener('click', async () => {
+            const name = document.getElementById('add-proj-name')?.value.trim();
+            const code = document.getElementById('add-proj-code')?.value.trim();
+            const aliases = document.getElementById('add-proj-aliases')?.value.trim();
+            const type = document.getElementById('add-proj-type')?.value;
+            const rate = document.getElementById('add-proj-rate')?.value;
+            const hasBu = addBuRadioYes && addBuRadioYes.checked;
+            const buDate = document.getElementById('add-bu-date')?.value;
+            const authority = document.getElementById('add-bu-authority')?.value.trim();
+
+            if (!name || !code) {
+                alert('Please enter both Project Name and Project Code.');
+                return;
+            }
+
+            btnSubmitAddProject.disabled = true;
+            btnSubmitAddProject.innerHTML = '<span class="material-symbols-outlined text-[16px] animate-spin">sync</span> Creating...';
+
+            try {
+                const resp = await fetch('/api/projects/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        code: code,
+                        aliases: aliases,
+                        type: type,
+                        rate: rate,
+                        has_bu: hasBu,
+                        bu_permission_date: hasBu ? buDate : null,
+                        authority: authority
+                    })
+                });
+                const res = await resp.json();
+                if (res.status === 'success') {
+                    alert(`✅ Project '${name}' (${code}) added successfully!\n\nIt is now registered for automated Tally extraction, BU rules, and GSTR-1 calculation.`);
+                    closeAddProjectModal();
+                    
+                    // Add to dropdowns
+                    const headerSelect = document.getElementById('select-header-project');
+                    if (headerSelect) {
+                        const opt = document.createElement('option');
+                        opt.value = code;
+                        opt.textContent = `${name} (${code})`;
+                        opt.className = 'bg-white text-slate-800';
+                        headerSelect.appendChild(opt);
+                        headerSelect.value = code;
+                    }
+                    const vchSelect = document.getElementById('select-voucher-project');
+                    if (vchSelect) {
+                        const opt = document.createElement('option');
+                        opt.value = code;
+                        opt.textContent = `${name} (${code})`;
+                        vchSelect.appendChild(opt);
+                        vchSelect.value = code;
+                    }
+                    const buProjSelect = document.getElementById('bu-select-project');
+                    if (buProjSelect) {
+                        const opt = document.createElement('option');
+                        opt.value = code;
+                        opt.textContent = `🏢 ${name} (${code})`;
+                        buProjSelect.appendChild(opt);
+                    }
+
+                    // Append row to Projects Ledger table
+                    const tbody = document.getElementById('project-table-body');
+                    if (tbody) {
+                        const tr = document.createElement('tr');
+                        tr.className = 'hover:bg-blue-50/40 transition-colors group bg-blue-50/20';
+                        tr.innerHTML = `
+                            <td class="py-3 px-4 text-slate-900 sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 border-r border-slate-100">
+                                <div class="font-display text-sm font-bold text-blue-700">${name}</div>
+                                <div class="font-mono text-[11px] text-slate-500">${code} • Active Portfolio</div>
+                            </td>
+                            <td class="py-3 px-4">
+                                <span class="px-2.5 py-0.5 rounded-md text-xs bg-slate-100 text-slate-700 border border-slate-200 font-medium">${type}</span>
+                            </td>
+                            <td class="py-3 px-4">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${hasBu ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'} shadow-xs">
+                                    <span class="material-symbols-outlined text-[11px]">${hasBu ? 'check_circle' : 'pending'}</span>
+                                    ${hasBu && buDate ? `Obtained ${buDate}` : 'Under Construction'}
+                                </span>
+                            </td>
+                            <td class="py-3 px-3 text-right font-mono text-slate-800">0</td>
+                            <td class="py-3 px-4 text-right font-mono text-slate-900 font-semibold">₹0</td>
+                            <td class="py-3 px-4 text-right font-mono text-slate-500">₹0</td>
+                            <td class="py-3 px-4 text-right font-mono text-emerald-700 font-bold bg-emerald-50/50">₹0</td>
+                            <td class="py-3 px-4 text-right font-mono text-blue-700 font-bold bg-blue-50/50">₹0</td>
+                            <td class="py-3 px-3 text-center font-mono font-bold text-blue-700">${rate}</td>
+                            <td class="py-3 px-4 text-right font-mono text-slate-900 font-bold">₹0</td>
+                        `;
+                        tbody.appendChild(tr);
+                    }
+                } else {
+                    alert('Error adding project: ' + (res.message || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Network error adding project: ' + err.message);
+            } finally {
+                btnSubmitAddProject.disabled = false;
+                btnSubmitAddProject.innerHTML = '<span class="material-symbols-outlined text-[16px]">add_circle</span><span>Create & Register Project</span>';
+            }
+        });
+    }
 });
 

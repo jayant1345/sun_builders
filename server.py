@@ -1221,6 +1221,79 @@ def api_bu_settings():
         "projects": proj_list
     })
 
+@app.route("/api/projects/create", methods=["POST"])
+def api_projects_create():
+    """Adds a new project to Sun Builders portfolio, dynamically enabling Tally extraction,
+    BU status tracking, and automated GST reporting for it."""
+    data = request.get_json() or {}
+    code = str(data.get("code", "")).strip()
+    name = str(data.get("name", "")).strip()
+    
+    if not code or not name:
+        return jsonify({"status": "error", "message": "Project Code and Project Name are required."}), 400
+
+    master = load_project_master()
+    projects = master.get("projects", {})
+
+    # Check for existing code
+    for pkey, pcfg in projects.items():
+        if str(pcfg.get("code")).strip().upper() == code.upper():
+            return jsonify({"status": "error", "message": f"Project code '{code}' already exists ({pcfg.get('display_name')})."}), 400
+
+    aliases_raw = data.get("aliases", "")
+    if isinstance(aliases_raw, list):
+        aliases = [str(a).strip().upper() for a in aliases_raw if str(a).strip()]
+    else:
+        aliases = [a.strip().upper() for a in str(aliases_raw).split(",") if a.strip()]
+
+    if code.upper() not in aliases:
+        aliases.append(code.upper())
+    if name.upper() not in aliases:
+        aliases.append(name.upper())
+
+    p_type = str(data.get("type", "Residential > 45L")).strip()
+    has_bu = bool(data.get("has_bu", False))
+    bu_date = str(data.get("bu_permission_date") or "").strip() or None
+    bu_ref = str(data.get("bu_reference_no") or "").strip()
+    authority = str(data.get("authority") or "AMC / AUDA").strip()
+    notes = str(data.get("notes") or "").strip()
+    prefix = str(data.get("prefix") or code[:3]).strip().upper()
+
+    rate_str = str(data.get("rate") or "").strip()
+    if "1%" in rate_str:
+        rate_val = 0.01
+    elif "18%" in rate_str:
+        rate_val = 0.18
+    else:
+        rate_val = 0.05
+
+    new_pkey = f"SUN {name.upper()}" if not name.upper().startswith("SUN ") else name.upper()
+    new_cfg = {
+        "code": code,
+        "aliases": aliases,
+        "display_name": name,
+        "type": p_type,
+        "prefix": prefix,
+        "has_bu": has_bu,
+        "bu_permission_date": bu_date if has_bu else None,
+        "bu_reference_no": bu_ref,
+        "authority": authority,
+        "default_residential_rate": rate_val,
+        "higher_residential_rate": 0.05,
+        "commercial_rate": 0.18 if "commercial" in p_type.lower() else 0.05,
+        "notes": notes
+    }
+
+    projects[new_pkey] = new_cfg
+    master["projects"] = projects
+    save_project_master(master)
+
+    return jsonify({
+        "status": "success",
+        "message": f"Project '{name}' ({code}) successfully created and registered!",
+        "project": new_cfg
+    })
+
 @app.route("/api/vouchers", methods=["GET"])
 def api_vouchers():
     """Returns actual real vouchers dynamically for the selected project, month, and year."""
@@ -1840,7 +1913,30 @@ def api_vouchers_sync():
     project = data.get("project", "Sun Footprint")
     project_code = data.get("company_code") or data.get("project_code") or "010010"
     vouchers = data.get("vouchers", [])
-    
+
+    # Dynamic resolution: Check if source company name matches any registered project or alias
+    source_name = str(data.get("source") or "").replace("Live Tally - ", "").strip().upper()
+    master = load_project_master()
+    matched_pcfg = None
+    if source_name:
+        for pkey, pcfg in master.get("projects", {}).items():
+            p_code = str(pcfg.get("code", "")).strip().upper()
+            p_name = str(pcfg.get("display_name", "")).strip().upper()
+            if (p_name and (p_name in source_name or source_name in p_name)) or (p_code and p_code in source_name):
+                matched_pcfg = pcfg
+                break
+            for al in pcfg.get("aliases", []):
+                al_str = str(al).strip().upper()
+                if al_str and (al_str in source_name or source_name in al_str):
+                    matched_pcfg = pcfg
+                    break
+            if matched_pcfg:
+                break
+
+    if matched_pcfg:
+        project_code = matched_pcfg.get("code", project_code)
+        project = matched_pcfg.get("display_name", project)
+
     # Save synced payload in data directory
     sync_file = os.path.join(BASE_DIR, "data", f"synced_{project.replace(' ', '_').lower()}.json")
     try:
