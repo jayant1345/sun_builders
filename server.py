@@ -1226,8 +1226,8 @@ def api_projects_create():
     """Adds a new project to Sun Builders portfolio, dynamically enabling Tally extraction,
     BU status tracking, and automated GST reporting for it."""
     data = request.get_json() or {}
-    code = str(data.get("code", "")).strip()
-    name = str(data.get("name", "")).strip()
+    code = str(data.get("code") or data.get("project_code", "")).strip()
+    name = str(data.get("name") or data.get("project_name", "")).strip()
     
     if not code or not name:
         return jsonify({"status": "error", "message": "Project Code and Project Name are required."}), 400
@@ -1260,9 +1260,9 @@ def api_projects_create():
     prefix = str(data.get("prefix") or code[:3]).strip().upper()
 
     rate_str = str(data.get("rate") or "").strip()
-    if "1%" in rate_str:
+    if "1%" in rate_str or rate_str == "0.01":
         rate_val = 0.01
-    elif "18%" in rate_str:
+    elif "18%" in rate_str or rate_str == "0.18":
         rate_val = 0.18
     else:
         rate_val = 0.05
@@ -1288,11 +1288,56 @@ def api_projects_create():
     master["projects"] = projects
     save_project_master(master)
 
+    if db:
+        try:
+            db.upsert_project(
+                code=code,
+                name=name,
+                project_type=p_type,
+                gst_rate=f"{int(rate_val * 100)}%",
+                bu_status="obtained" if has_bu else "under_construction",
+                bu_date=bu_date if has_bu else None,
+                bu_ref=bu_ref,
+                bu_authority=authority,
+                notes=notes
+            )
+        except Exception as e:
+            print(f"[Project Create] DB sync warning: {e}")
+
     return jsonify({
         "status": "success",
         "message": f"Project '{name}' ({code}) successfully created and registered!",
         "project": new_cfg
     })
+
+@app.route("/api/projects/delete", methods=["POST"])
+def api_projects_delete():
+    """Deletes a project by code."""
+    data = request.get_json() or {}
+    code = str(data.get("code") or data.get("project_code", "")).strip()
+    if not code:
+        return jsonify({"status": "error", "message": "Project code is required."}), 400
+
+    master = load_project_master()
+    projects = master.get("projects", {})
+    deleted = False
+
+    keys_to_del = [k for k, p in projects.items() if str(p.get("code")).strip().upper() == code.upper() or k.upper() == code.upper()]
+    for k in keys_to_del:
+        del projects[k]
+        deleted = True
+
+    if deleted:
+        master["projects"] = projects
+        save_project_master(master)
+
+    if db:
+        try:
+            db.delete_project(code)
+        except Exception as e:
+            print(f"[Project Delete] DB sync warning: {e}")
+
+    return jsonify({"status": "success", "message": f"Project '{code}' deleted successfully."})
 
 @app.route("/api/vouchers", methods=["GET"])
 def api_vouchers():

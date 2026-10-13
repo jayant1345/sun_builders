@@ -319,6 +319,21 @@ class DatabaseManager:
             print(f"[DatabaseManager] Error upserting project {code}: {e}")
             return False
 
+    def delete_project(self, code):
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("DELETE FROM projects WHERE code = %s;", (code,))
+                else:
+                    cur.execute("DELETE FROM projects WHERE code = ?;", (code,))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"[DatabaseManager] Error deleting project {code}: {e}")
+            return False
+
+
     def save_units(self, project_code, units):
         """Upsert the unit/flat inventory master (block, size, usage - no owner/payment
         data) for a project. Sourced from the CA's unit-master Excel sheets, not Tally."""
