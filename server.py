@@ -1789,6 +1789,37 @@ def api_vouchers_override():
         return jsonify({"status": "error", "message": "Voucher not found for that project/vch_no/date"}), 404
     return jsonify({"status": "success"})
 
+@app.route("/api/units/override-bu", methods=["POST"])
+def api_units_override_bu():
+    """
+    Sets BU status override for an entire flat unit (all its historical and future vouchers).
+    Allows 1-click classification of post-BU purchased flats (Schedule III, Entry 5)
+    or pre-BU under-construction flats.
+    """
+    data = request.get_json() or {}
+    project = str(data.get("project", "")).strip()
+    unit_no = str(data.get("unit_no", "") or data.get("unit", "")).strip().upper()
+    bu_status = data.get("bu_status")
+    note = str(data.get("note") or "").strip()[:255]
+
+    if not project or not unit_no:
+        return jsonify({"status": "error", "message": "project and unit_no are required"}), 400
+
+    if bu_status not in (None, "auto", "before_bu", "after_bu"):
+        return jsonify({"status": "error", "message": "bu_status must be auto, before_bu, or after_bu"}), 400
+
+    PROJECTS_METADATA = get_projects_metadata()
+    pcfg = PROJECTS_METADATA.get(project)
+    target_key = pcfg["code"] if pcfg else project
+
+    updated_count = db.set_unit_bu_override(target_key, unit_no, bu_status=bu_status, note=note)
+    return jsonify({
+        "status": "success",
+        "updated_vouchers": updated_count,
+        "unit_no": unit_no,
+        "bu_status": bu_status
+    })
+
 @app.route("/api/vouchers/sync", methods=["POST"])
 def api_vouchers_sync():
     """Receives synced vouchers from local client Windows machine running Tally."""

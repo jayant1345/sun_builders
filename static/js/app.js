@@ -682,6 +682,55 @@ async function openUnitHistory(projectKey, unitNo) {
             }
         }
 
+        const toggleBuBtn = document.getElementById('btn-toggle-unit-bu');
+        const toggleBuText = document.getElementById('btn-toggle-unit-bu-text');
+        if (toggleBuBtn && toggleBuText) {
+            toggleBuBtn.classList.remove('hidden');
+            if (data.is_exempt) {
+                toggleBuBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold shadow-xs transition-colors';
+                toggleBuText.textContent = 'Switch to Pre-BU (Taxable)';
+                toggleBuBtn.title = 'Mark all vouchers for this unit as Pre-BU Taxable';
+            } else {
+                toggleBuBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold shadow-xs transition-colors';
+                toggleBuText.textContent = 'Mark as Post-BU (Exempt 0% GST)';
+                toggleBuBtn.title = 'Mark all vouchers for this unit as Post-BU Purchase (Exempt under Schedule III)';
+            }
+            toggleBuBtn.onclick = async () => {
+                const newStatus = data.is_exempt ? 'before_bu' : 'after_bu';
+                const promptMsg = data.is_exempt 
+                    ? `Switch Unit ${data.unit_no} to Pre-BU (Taxable)? This will apply GST to receipts.`
+                    : `Mark Unit ${data.unit_no} as Post-BU Purchase (Exempt)? Under Schedule III, all receipts will be 0% GST (Exempt).`;
+                if (!confirm(promptMsg)) return;
+
+                toggleBuBtn.disabled = true;
+                toggleBuText.textContent = 'Updating...';
+                try {
+                    const r = await fetch('/api/units/override-bu', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            project: data.project_key,
+                            unit: data.unit_no,
+                            bu_status: newStatus,
+                            note: `Set to ${newStatus} from Unit Statement modal`
+                        })
+                    });
+                    const res = await r.json();
+                    if (res.status === 'success') {
+                        await openUnitHistory(data.project_key, data.unit_no);
+                        const projectSel = document.getElementById('select-voucher-project');
+                        if (projectSel) loadRealVouchers(projectSel.value);
+                    } else {
+                        alert('Could not update: ' + (res.message || 'Unknown error'));
+                    }
+                } catch (e) {
+                    alert('Network error: ' + e.message);
+                } finally {
+                    toggleBuBtn.disabled = false;
+                }
+            };
+        }
+
         if (rateBadge) {
             rateBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200';
             rateBadge.textContent = data.rate_label || `${data.rate_pct}% Rate`;

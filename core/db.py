@@ -620,6 +620,41 @@ class DatabaseManager:
             print(f"[DatabaseManager] Error setting voucher override: {e}")
             return False
 
+    def set_unit_bu_override(self, project_code, unit_no, bu_status=None, note=None):
+        """
+        Sets manual BU status override for all vouchers of an entire unit in one go.
+        bu_status can be 'after_bu', 'before_bu', or 'auto' (clears override).
+        """
+        if bu_status == "auto":
+            bu_status = None
+        clean_u = unit_no.replace("-", "").replace(" ", "").upper()
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                args = (bu_status, note, project_code, unit_no, clean_u)
+                if self.is_postgres:
+                    cur.execute("""
+                        UPDATE vouchers SET override_bu_status = %s, override_note = %s
+                        WHERE project_code = %s AND (
+                            UPPER(unit_no) = UPPER(%s) OR 
+                            REPLACE(REPLACE(UPPER(unit_no), '-', ''), ' ', '') = %s
+                        );
+                    """, args)
+                else:
+                    cur.execute("""
+                        UPDATE vouchers SET override_bu_status = ?, override_note = ?
+                        WHERE project_code = ? AND (
+                            UPPER(unit_no) = UPPER(?) OR 
+                            REPLACE(REPLACE(UPPER(unit_no), '-', ''), ' ', '') = ?
+                        );
+                    """, args)
+                updated = cur.rowcount
+                conn.commit()
+                return updated
+        except Exception as e:
+            print(f"[DatabaseManager] Error setting unit BU override: {e}")
+            return 0
+
     def fix_flat_name_parsing(self):
         """
         One-time, idempotent correction: re-derives unit_no/block_no/party_name from
