@@ -170,9 +170,12 @@
           <span class="material-symbols-outlined text-[18px]">assignment_turned_in</span>
           <span>GSTR-1 &amp; 3B</span>
         </a>
-        <a class="nav-tab flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="audit" href="#audit">
-          <span class="material-symbols-outlined text-[18px]">verified_user</span>
-          <span>Audit Inspection</span>
+        <a class="nav-tab flex items-center justify-between px-3.5 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-sm font-medium transition-all duration-150" data-tab="audit" href="#audit">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-[18px]">history_edu</span>
+            <span>Activity &amp; Audit Trail</span>
+          </div>
+          <span id="nav-activity-count-badge" class="font-mono text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold hidden">0</span>
         </a>
       </nav>
     </div>
@@ -1523,69 +1526,326 @@
       <!-- TAB 6: AUDIT INSPECTION                                               -->
       <!-- ===================================================================== -->
       <div id="tab-audit" class="tab-pane hidden flex flex-col gap-6">
-        <section class="glass-panel rounded-xl p-5 border border-outline-variant">
-          <div class="flex items-center justify-between pb-4 border-b border-outline-variant mb-4">
+        <!-- 1. Activity Tracing & Audit Hub Header -->
+        <section class="glass-panel rounded-2xl p-6 border border-outline-variant/80 shadow-soft">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-outline-variant/60">
             <div>
-              <h2 class="font-display text-lg font-bold text-on-surface">CA Audit Inspection &amp; Compliance Trail</h2>
-              <p class="text-xs text-on-surface-variant">Automated verification against Real Estate GST statutory provisions</p>
-            </div>
-            <span class="px-3 py-1 rounded-full bg-secondary/10 text-secondary border border-secondary/30 text-xs font-bold font-mono">
-              AUDIT STATUS: PASSED
-            </span>
-          </div>
-
-          <div class="space-y-3 mb-6">
-            <div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
-              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
-              <div class="flex-1 text-xs">
-                <strong class="text-on-surface font-semibold">Sun Footprint BU Cutoff Verification:</strong>
-                <span class="text-on-surface-variant"> BU permission dated 18/03/2025 verified. 218 member advances received after 18th March 2025 flagged as 100% exempt from GST under Schedule III Entry 5.</span>
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shadow-xs">
+                  <span class="material-symbols-outlined text-[24px]">history_edu</span>
+                </div>
+                <div>
+                  <h2 class="font-display text-xl font-bold text-on-surface tracking-tight">Activity Tracing &amp; Audit Trail Facility</h2>
+                  <p class="text-xs text-on-surface-variant">Real-time chronological activity tracking: Tally syncs, CA overrides, BU dates, GSTR generation &amp; system events</p>
+                </div>
               </div>
-              <span class="font-mono text-secondary font-bold text-xs">VERIFIED</span>
             </div>
+            
+            <div class="flex flex-wrap items-center gap-2.5">
+              <!-- Live Auto-Refresh Toggle -->
+              <label class="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-container border border-outline-variant text-xs text-on-surface font-medium cursor-pointer hover:bg-slate-100 transition-colors">
+                <input id="checkbox-activity-autorefresh" type="checkbox" checked class="rounded text-primary focus:ring-primary w-4 h-4 border-slate-300">
+                <span class="flex items-center gap-1.5">
+                  <span class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span>Live Stream</span>
+                </span>
+              </label>
 
-            <div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
-              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
-              <div class="flex-1 text-xs">
-                <strong class="text-on-surface font-semibold">5 Ancillary Non-GST Exclusions Audit:</strong>
-                <span class="text-on-surface-variant"> ₹3,45,10,000 in Refundable Deposits, Stamp Duty, Registration, Maintenance, and Electricity expenses contra-adjusted before calculating taxable value.</span>
-              </div>
-              <span class="font-mono text-secondary font-bold text-xs">VERIFIED</span>
-            </div>
+              <!-- Refresh Button -->
+              <button id="btn-refresh-activity-logs" type="button" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-800 text-xs font-semibold border border-slate-200 shadow-xs transition-all active:scale-95 cursor-pointer">
+                <span id="icon-refresh-activity" class="material-symbols-outlined text-[16px]">sync</span>
+                <span>Refresh</span>
+              </button>
 
-            <div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
-              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
-              <div class="flex-1 text-xs">
-                <strong class="text-on-surface font-semibold">Affordable Housing 45 Lakhs Threshold:</strong>
-                <span class="text-on-surface-variant"> Unit-wise verification executed. Units with consideration ≤ 45 Lakhs taxed strictly at 1% GST without ITC.</span>
-              </div>
-              <span class="font-mono text-secondary font-bold text-xs">VERIFIED</span>
-            </div>
-
-            <div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
-              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
-              <div class="flex-1 text-xs">
-                <strong class="text-on-surface font-semibold">Commercial 1/3rd Land Abatement Formula:</strong>
-                <span class="text-on-surface-variant"> Formula (=B8/3) verified on Sun Gravitas Standalone Commercial sheets, ensuring effective tax of 12.00%.</span>
-              </div>
-              <span class="font-mono text-secondary font-bold text-xs">VERIFIED</span>
+              <!-- Export CSV Audit Trail Button -->
+              <button id="btn-export-activity-logs" type="button" class="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer">
+                <span class="material-symbols-outlined text-[16px]">download</span>
+                <span>Export Audit CSV</span>
+              </button>
             </div>
           </div>
 
-          <!-- Audit Console Stream -->
-          <div class="rounded-xl bg-surface-container-lowest border border-outline-variant overflow-hidden">
-            <div class="px-4 py-2 bg-surface-dim border-b border-outline-variant flex justify-between items-center text-xs font-mono text-on-surface-variant">
-              <span>Audit Execution Log Stream</span>
-              <span class="text-secondary font-semibold">Live</span>
+          <!-- 2. KPI Metrics Bar -->
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3.5 mt-5">
+            <div class="p-3.5 rounded-xl bg-surface-container border border-outline-variant flex flex-col justify-between">
+              <span class="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider flex items-center justify-between">
+                <span>Total Activities</span>
+                <span class="material-symbols-outlined text-blue-600 text-[18px]">receipt_long</span>
+              </span>
+              <div class="mt-2 flex items-baseline gap-2">
+                <span id="stat-activity-total" class="font-display font-extrabold text-xl text-on-surface">0</span>
+                <span class="text-[10px] text-slate-500">logged</span>
+              </div>
             </div>
-            <div class="p-4 font-mono text-xs leading-relaxed max-h-[250px] overflow-y-auto terminal-scrollbar space-y-1.5 text-on-surface-variant">
-              <div class="text-primary">[AUDIT] Commencing statutory reconciliation for Sun Builders Projects LLP...</div>
-              <div class="text-secondary">[AUDIT] Match rate against CA Excel template: 100.0% across all 23 sheets.</div>
-              <div class="text-tertiary">[AUDIT] BU cutoff verified with AMC/Competent Authority certificate record.</div>
-              <div class="text-secondary">[AUDIT] Ready for final partner review and GSTR-1 JSON export.</div>
+
+            <div class="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200 flex flex-col justify-between">
+              <span class="text-[11px] font-semibold text-blue-900 uppercase tracking-wider flex items-center justify-between">
+                <span>Tally Syncs</span>
+                <span class="material-symbols-outlined text-blue-600 text-[18px]">sync_alt</span>
+              </span>
+              <div class="mt-2 flex items-baseline gap-2">
+                <span id="stat-activity-sync" class="font-display font-extrabold text-xl text-blue-900">0</span>
+                <span class="text-[10px] text-blue-700">runs</span>
+              </div>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200 flex flex-col justify-between">
+              <span class="text-[11px] font-semibold text-amber-900 uppercase tracking-wider flex items-center justify-between">
+                <span>CA Overrides</span>
+                <span class="material-symbols-outlined text-amber-600 text-[18px]">edit_note</span>
+              </span>
+              <div class="mt-2 flex items-baseline gap-2">
+                <span id="stat-activity-overrides" class="font-display font-extrabold text-xl text-amber-900">0</span>
+                <span class="text-[10px] text-amber-700">manual</span>
+              </div>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200 flex flex-col justify-between">
+              <span class="text-[11px] font-semibold text-emerald-900 uppercase tracking-wider flex items-center justify-between">
+                <span>GSTR Generated</span>
+                <span class="material-symbols-outlined text-emerald-600 text-[18px]">assignment_turned_in</span>
+              </span>
+              <div class="mt-2 flex items-baseline gap-2">
+                <span id="stat-activity-gstr" class="font-display font-extrabold text-xl text-emerald-900">0</span>
+                <span class="text-[10px] text-emerald-700">workbooks</span>
+              </div>
+            </div>
+
+            <div class="col-span-2 md:col-span-1 p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+              <span class="text-[11px] font-semibold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                <span>Last Activity</span>
+                <span class="material-symbols-outlined text-slate-500 text-[18px]">schedule</span>
+              </span>
+              <div class="mt-2">
+                <span id="stat-activity-last" class="font-mono text-xs font-semibold text-slate-800 truncate block">Never</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Search and Filter Bar -->
+          <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 mt-5 p-3 rounded-xl bg-surface-dim border border-outline-variant">
+            <!-- Search Input -->
+            <div class="relative flex-1">
+              <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-[18px]">search</span>
+              <input id="input-activity-search" type="text" placeholder="Search description, action, voucher #, member, or unit..." class="w-full pl-9 pr-8 py-2 rounded-lg bg-white border border-slate-300 text-xs text-on-surface placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <button id="btn-clear-activity-search" type="button" class="hidden absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600">
+                <span class="material-symbols-outlined text-[16px]">close</span>
+              </button>
+            </div>
+
+            <!-- Filter Controls -->
+            <div class="flex flex-wrap items-center gap-2">
+              <!-- Project Selector -->
+              <div class="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-300 shadow-2xs">
+                <span class="material-symbols-outlined text-slate-500 text-[16px]">apartment</span>
+                <select id="select-activity-project" class="bg-transparent border-0 p-0 text-xs font-medium text-slate-800 focus:ring-0 cursor-pointer">
+                  <option value="ALL">All Projects</option>
+                  <option value="010000">Sun Atmosphere (010000)</option>
+                  <option value="010010">Sun Footprint (010010)</option>
+                  <option value="010011">Sun Park West (010011)</option>
+                  <option value="010002">Sun Silver Spring (010002)</option>
+                  <option value="010009">Sun Gravitas (010009)</option>
+                  <option value="010015">Lekhambha (010015)</option>
+                  <option value="GLOBAL">Global / System</option>
+                </select>
+              </div>
+
+              <!-- Activity Type Selector -->
+              <div class="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-300 shadow-2xs">
+                <span class="material-symbols-outlined text-slate-500 text-[16px]">category</span>
+                <select id="select-activity-type" class="bg-transparent border-0 p-0 text-xs font-medium text-slate-800 focus:ring-0 cursor-pointer">
+                  <option value="ALL">All Categories</option>
+                  <option value="TALLY_SYNC">Tally Sync</option>
+                  <option value="GSTR_GENERATE">GSTR Generation</option>
+                  <option value="BU_DATE_UPDATE">BU Date Updates</option>
+                  <option value="VOUCHER_OVERRIDE">Voucher Overrides</option>
+                  <option value="UNIT_BU_OVERRIDE">Unit BU Overrides</option>
+                  <option value="UNIT_MASTER_IMPORT">Unit Inventory Import</option>
+                  <option value="PURGE_VOUCHERS">Voucher Deduplication</option>
+                  <option value="REPORT_DOWNLOAD">Report Downloads</option>
+                  <option value="PROJECT_CONFIG">Project Master Config</option>
+                  <option value="SYSTEM_EVENT">System Events</option>
+                </select>
+              </div>
+
+              <!-- Status Selector -->
+              <div class="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-300 shadow-2xs">
+                <span class="material-symbols-outlined text-slate-500 text-[16px]">flag</span>
+                <select id="select-activity-status" class="bg-transparent border-0 p-0 text-xs font-medium text-slate-800 focus:ring-0 cursor-pointer">
+                  <option value="ALL">All Statuses</option>
+                  <option value="SUCCESS">Success</option>
+                  <option value="WARNING">Warning</option>
+                  <option value="ERROR">Error</option>
+                  <option value="INFO">Info</option>
+                </select>
+              </div>
+
+              <!-- Clear Filters -->
+              <button id="btn-clear-activity-filters" type="button" title="Reset Filters" class="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors">
+                <span class="material-symbols-outlined text-[18px]">filter_alt_off</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 4. Activity Chronological Table -->
+          <div class="mt-4 rounded-xl border border-outline-variant overflow-hidden shadow-2xs bg-white">
+            <div class="overflow-x-auto table-scrollbar max-h-[500px]">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead class="bg-slate-100/80 text-on-surface-variant font-semibold border-b border-outline-variant sticky top-0 z-10 backdrop-blur-xs">
+                  <tr>
+                    <th class="py-3 px-4 w-[160px]">Timestamp</th>
+                    <th class="py-3 px-3 w-[150px]">Activity Type</th>
+                    <th class="py-3 px-3 w-[130px]">Project</th>
+                    <th class="py-3 px-4">Action &amp; Description</th>
+                    <th class="py-3 px-3 w-[100px] text-center">Status</th>
+                    <th class="py-3 px-3 w-[90px] text-right">Details</th>
+                  </tr>
+                </thead>
+                <tbody id="activity-table-body" class="divide-y divide-slate-100 font-sans">
+                  <!-- Dynamically populated rows -->
+                  <tr>
+                    <td colspan="6" class="py-12 text-center text-slate-400">
+                      <span class="material-symbols-outlined animate-spin text-[28px] text-blue-600 block mx-auto mb-2">progress_activity</span>
+                      <span>Loading activity log audit trail...</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Table Footer with Pagination / Count Status -->
+            <div class="px-4 py-2.5 bg-slate-50 border-t border-outline-variant flex items-center justify-between text-xs text-on-surface-variant font-mono">
+              <span id="activity-count-summary">Showing 0 activities</span>
+              <div class="flex items-center gap-2">
+                <span id="activity-file-log-hint" class="text-[11px] text-slate-500">Persisted in: <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200">data/activity.log</code></span>
+              </div>
             </div>
           </div>
         </section>
+
+        <!-- 5. CA Statutory Compliance Trail (Checklist) -->
+        <section class="glass-panel rounded-xl p-5 border border-outline-variant">
+          <div class="flex items-center justify-between pb-3 border-b border-outline-variant mb-4">
+            <div>
+              <h3 class="font-display text-base font-bold text-on-surface">Statutory Compliance Directives Verification</h3>
+              <p class="text-xs text-on-surface-variant">Automated verification against Real Estate GST statutory provisions</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-secondary/10 text-secondary border border-secondary/30 text-xs font-bold font-mono">
+              COMPLIANCE STATUS: VERIFIED
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="flex items-start gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
+              <span class="material-symbols-outlined text-secondary text-[20px] mt-0.5">check_circle</span>
+              <div class="flex-1 text-xs">
+                <strong class="text-on-surface font-semibold">BU Cutoff Verification (Schedule III Entry 5):</strong>
+                <p class="text-on-surface-variant mt-0.5">Post-BU permission member receipts classified as 100% exempt from GST.</p>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
+              <span class="material-symbols-outlined text-secondary text-[20px] mt-0.5">check_circle</span>
+              <div class="flex-1 text-xs">
+                <strong class="text-on-surface font-semibold">5 Ancillary Non-GST Exclusions:</strong>
+                <p class="text-on-surface-variant mt-0.5">Refundable deposits, stamp duty, registration, and maintenance excluded prior to tax.</p>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
+              <span class="material-symbols-outlined text-secondary text-[20px] mt-0.5">check_circle</span>
+              <div class="flex-1 text-xs">
+                <strong class="text-on-surface font-semibold">Affordable Housing 45L Threshold:</strong>
+                <p class="text-on-surface-variant mt-0.5">Flats ≤ 45 Lakhs taxed strictly at 1% GST; flats &gt; 45 Lakhs taxed at 5% GST.</p>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-3 p-3 rounded-lg bg-surface-container border border-outline-variant">
+              <span class="material-symbols-outlined text-secondary text-[20px] mt-0.5">check_circle</span>
+              <div class="flex-1 text-xs">
+                <strong class="text-on-surface font-semibold">Commercial 1/3rd Land Abatement:</strong>
+                <p class="text-on-surface-variant mt-0.5">Effective 12.00% tax enforced on pure commercial towers with 1/3 land deduction.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- MODAL: ACTIVITY DETAIL INSPECTOR                                      -->
+      <!-- ===================================================================== -->
+      <div id="modal-activity-detail" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <!-- Header -->
+          <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+            <div class="flex items-center gap-3">
+              <div id="modal-act-icon-wrap" class="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                <span id="modal-act-icon" class="material-symbols-outlined text-[20px]">info</span>
+              </div>
+              <div>
+                <h3 id="modal-act-title" class="font-display font-bold text-on-surface text-base">Activity Details</h3>
+                <p id="modal-act-subtitle" class="font-mono text-xs text-on-surface-variant">Log ID #0 • 2026-10-13</p>
+              </div>
+            </div>
+            <button id="btn-close-activity-modal" type="button" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors">
+              <span class="material-symbols-outlined text-[20px]">close</span>
+            </button>
+          </div>
+
+          <!-- Body -->
+          <div class="p-6 overflow-y-auto space-y-4">
+            <!-- Summary Card -->
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Activity Summary</span>
+                <span id="modal-act-status-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-emerald-100 text-emerald-800">SUCCESS</span>
+              </div>
+              <p id="modal-act-description" class="text-xs text-slate-800 font-medium leading-relaxed"></p>
+            </div>
+
+            <!-- Metadata Key-Value Grid -->
+            <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+              <div class="p-3 rounded-lg bg-surface-container border border-outline-variant">
+                <span class="text-[10px] text-slate-500 uppercase block">Category / Type</span>
+                <span id="modal-act-type" class="font-semibold text-slate-900 mt-0.5 block">—</span>
+              </div>
+              <div class="p-3 rounded-lg bg-surface-container border border-outline-variant">
+                <span class="text-[10px] text-slate-500 uppercase block">Associated Project</span>
+                <span id="modal-act-project" class="font-semibold text-slate-900 mt-0.5 block">—</span>
+              </div>
+              <div class="p-3 rounded-lg bg-surface-container border border-outline-variant">
+                <span class="text-[10px] text-slate-500 uppercase block">Exact Timestamp</span>
+                <span id="modal-act-timestamp" class="font-semibold text-slate-900 mt-0.5 block">—</span>
+              </div>
+              <div class="p-3 rounded-lg bg-surface-container border border-outline-variant">
+                <span class="text-[10px] text-slate-500 uppercase block">IP Address / Source</span>
+                <span id="modal-act-ip" class="font-semibold text-slate-900 mt-0.5 block">—</span>
+              </div>
+            </div>
+
+            <!-- JSON Payload Details -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Detailed Parameters &amp; Payload</span>
+                <button id="btn-copy-activity-json" type="button" class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-semibold">
+                  <span class="material-symbols-outlined text-[14px]">content_copy</span>
+                  <span>Copy JSON</span>
+                </button>
+              </div>
+              <pre id="modal-act-json" class="p-4 rounded-xl bg-slate-900 text-emerald-400 font-mono text-xs overflow-x-auto max-h-[220px] terminal-scrollbar border border-slate-800 leading-relaxed"></pre>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="px-6 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
+            <button id="btn-modal-done" type="button" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold shadow-xs transition-colors">
+              Close Details
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- ===================================================================== -->

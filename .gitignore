@@ -32,3 +32,7 @@ output/~$*.xlsx
 # Local databases
 *.db
 data/*.db
+
+# Logs
+*.log
+data/*.log

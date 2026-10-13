@@ -204,6 +204,10 @@ function switchTab(tabId) {
         loadUnits(uSel ? uSel.value : '010000');
     }
 
+    if (tabId === 'audit') {
+        loadActivityLogs();
+    }
+
     // Scroll to top of main content unless targeted
     if (window.location.hash !== '#voucher-hub-section' && window.location.hash !== '#vouchers') {
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1337,6 +1341,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     appendLog('READY', `${res.summary.total_units} Active Member Units verified. Initiating direct file download.`);
                 }
 
+                loadActivityLogs();
+
                 // Direct file download trigger
                 window.location.href = currentDownloadUrl;
             } else {
@@ -1749,6 +1755,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 await loadRealVouchers(data.project_code);
                 await checkStatus();
+                loadActivityLogs();
             } else {
                 setModalPipelineStage(1, `Tally Notice: ${data.message || 'Ready'}`, 50);
                 addModalLog(`Notice: ${data.message}`, "WARN");
@@ -2479,5 +2486,368 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Initialize Activity & Audit Trail Tracing Engine
+    initActivityLoggingUI();
+    loadActivityLogs();
 });
+
+// =========================================================================
+// ACTIVITY LOGGING & AUDIT TRAIL TRACING ENGINE
+// =========================================================================
+let currentActivityLogs = [];
+let activitySearchDebounceTimer = null;
+let activityAutoRefreshTimer = null;
+
+const ACTIVITY_TYPE_CONFIG = {
+    'TALLY_SYNC': { label: 'Tally Sync', icon: 'sync_alt', bg: 'bg-blue-50 text-blue-700 border-blue-200' },
+    'GSTR_GENERATE': { label: 'GSTR Gen', icon: 'assignment_turned_in', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    'BU_DATE_UPDATE': { label: 'BU Date', icon: 'event', bg: 'bg-amber-50 text-amber-700 border-amber-200' },
+    'VOUCHER_OVERRIDE': { label: 'Vch Override', icon: 'edit_note', bg: 'bg-purple-50 text-purple-700 border-purple-200' },
+    'UNIT_BU_OVERRIDE': { label: 'Unit Override', icon: 'domain_verification', bg: 'bg-violet-50 text-violet-700 border-violet-200' },
+    'UNIT_MASTER_IMPORT': { label: 'Unit Import', icon: 'upload_file', bg: 'bg-teal-50 text-teal-700 border-teal-200' },
+    'UNIT_PLAN_GENERATE': { label: 'Plan Gen', icon: 'architecture', bg: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+    'PURGE_VOUCHERS': { label: 'Dedup/Purge', icon: 'cleaning_services', bg: 'bg-rose-50 text-rose-700 border-rose-200' },
+    'REPORT_DOWNLOAD': { label: 'Download', icon: 'download', bg: 'bg-sky-50 text-sky-700 border-sky-200' },
+    'PROJECT_CONFIG': { label: 'Project Config', icon: 'settings', bg: 'bg-slate-100 text-slate-800 border-slate-300' },
+    'SYSTEM_EVENT': { label: 'System Event', icon: 'dns', bg: 'bg-slate-100 text-slate-700 border-slate-200' }
+};
+
+function formatRelativeTime(dateStr) {
+    if (!dateStr) return '—';
+    try {
+        const d = new Date(dateStr.replace(' ', 'T'));
+        if (isNaN(d.getTime())) return dateStr;
+        const now = new Date();
+        const diffSec = Math.floor((now - d) / 1000);
+        if (diffSec < 10) return 'Just now';
+        if (diffSec < 60) return `${diffSec}s ago`;
+        const diffMin = Math.floor(diffSec / 60);
+        if (diffMin < 60) return `${diffMin}m ago`;
+        const diffHr = Math.floor(diffMin / 60);
+        if (diffHr < 24) return `${diffHr}h ago`;
+        const diffDay = Math.floor(diffHr / 24);
+        if (diffDay < 7) return `${diffDay}d ago`;
+        return dateStr.split(' ')[0];
+    } catch {
+        return dateStr;
+    }
+}
+
+async function loadActivityLogs() {
+    const tableBody = document.getElementById('activity-table-body');
+    const projectSel = document.getElementById('select-activity-project');
+    const typeSel = document.getElementById('select-activity-type');
+    const statusSel = document.getElementById('select-activity-status');
+    const searchInput = document.getElementById('input-activity-search');
+    const refreshIcon = document.getElementById('icon-refresh-activity');
+
+    const project = projectSel ? projectSel.value : 'ALL';
+    const type = typeSel ? typeSel.value : 'ALL';
+    const status = statusSel ? statusSel.value : 'ALL';
+    const search = searchInput ? searchInput.value.trim() : '';
+
+    if (refreshIcon) refreshIcon.classList.add('animate-spin');
+
+    try {
+        const params = new URLSearchParams({
+            project: project,
+            type: type,
+            status: status,
+            search: search,
+            limit: '100',
+            offset: '0'
+        });
+
+        const resp = await fetch(`/api/activity-logs?${params.toString()}`);
+        const data = await resp.json();
+
+        if (data.status === 'success') {
+            currentActivityLogs = data.logs || [];
+            updateActivityStats(data.stats, data.total);
+            renderActivityTable(currentActivityLogs);
+
+            const countSum = document.getElementById('activity-count-summary');
+            if (countSum) {
+                countSum.textContent = `Showing ${currentActivityLogs.length} of ${data.total} logged activities`;
+            }
+
+            const badge = document.getElementById('nav-activity-count-badge');
+            if (badge) {
+                badge.textContent = data.total;
+                badge.classList.remove('hidden');
+            }
+        }
+    } catch (err) {
+        console.error('Failed to load activity logs:', err);
+        if (tableBody && (!currentActivityLogs || currentActivityLogs.length === 0)) {
+            tableBody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-rose-500 font-mono text-xs">Failed to load activity logs: ${err.message}</td></tr>`;
+        }
+    } finally {
+        if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+    }
+}
+
+function updateActivityStats(stats, total) {
+    if (!stats) return;
+    const statTotal = document.getElementById('stat-activity-total');
+    const statSync = document.getElementById('stat-activity-sync');
+    const statOverrides = document.getElementById('stat-activity-overrides');
+    const statGstr = document.getElementById('stat-activity-gstr');
+    const statLast = document.getElementById('stat-activity-last');
+
+    if (statTotal) statTotal.textContent = total || stats.total || 0;
+
+    const byType = stats.by_type || {};
+    if (statSync) statSync.textContent = byType['TALLY_SYNC'] || 0;
+    if (statOverrides) statOverrides.textContent = (byType['VOUCHER_OVERRIDE'] || 0) + (byType['UNIT_BU_OVERRIDE'] || 0);
+    if (statGstr) statGstr.textContent = byType['GSTR_GENERATE'] || 0;
+
+    if (statLast && stats.last_active) {
+        statLast.textContent = formatRelativeTime(stats.last_active);
+        statLast.title = stats.last_active;
+    }
+}
+
+function renderActivityTable(logs) {
+    const tableBody = document.getElementById('activity-table-body');
+    if (!tableBody) return;
+
+    if (!logs || logs.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="6" class="py-12 text-center text-slate-400">
+                    <span class="material-symbols-outlined text-[36px] text-slate-300 block mx-auto mb-1.5">manage_search</span>
+                    <span class="font-medium text-xs text-slate-600 block">No activity records match the current filters</span>
+                    <span class="text-[11px] text-slate-400 block mt-0.5">Try clearing filters or performing actions like Tally Sync, BU edits, or GSTR generation</span>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    let html = '';
+    logs.forEach(log => {
+        const typeCfg = ACTIVITY_TYPE_CONFIG[log.activity_type] || {
+            label: log.activity_type || 'ACTIVITY',
+            icon: 'info',
+            bg: 'bg-slate-100 text-slate-700 border-slate-200'
+        };
+
+        let statusClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        let statusIcon = 'check_circle';
+        if (log.status === 'ERROR') {
+            statusClass = 'bg-rose-50 text-rose-700 border-rose-200';
+            statusIcon = 'error';
+        } else if (log.status === 'WARNING') {
+            statusClass = 'bg-amber-50 text-amber-700 border-amber-200';
+            statusIcon = 'warning';
+        } else if (log.status === 'INFO') {
+            statusClass = 'bg-blue-50 text-blue-700 border-blue-200';
+            statusIcon = 'info';
+        }
+
+        const projectLabel = log.project_code ? (log.project_code === 'ALL' ? 'Consolidated' : (log.project_name || log.project_code)) : 'Global';
+        const projectBadge = log.project_code ? `<span class="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-100 text-slate-800 border border-slate-200/80" title="${log.project_code}">${escapeHtml(projectLabel)}</span>` : '<span class="text-slate-400">—</span>';
+
+        const exactTime = log.created_at || '';
+        const relTime = formatRelativeTime(exactTime);
+
+        html += `
+            <tr class="hover:bg-slate-50/80 transition-colors">
+                <td class="py-3 px-4 font-mono text-xs whitespace-nowrap">
+                    <div class="font-bold text-slate-800">${relTime}</div>
+                    <div class="text-[10px] text-slate-400">${exactTime}</div>
+                </td>
+                <td class="py-3 px-3 whitespace-nowrap">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${typeCfg.bg}">
+                        <span class="material-symbols-outlined text-[15px]">${typeCfg.icon}</span>
+                        <span>${typeCfg.label}</span>
+                    </span>
+                </td>
+                <td class="py-3 px-3 whitespace-nowrap">
+                    ${projectBadge}
+                </td>
+                <td class="py-3 px-4">
+                    <div class="font-semibold text-slate-900 text-xs">${escapeHtml(log.action || '')}</div>
+                    <div class="text-xs text-slate-600 line-clamp-2 mt-0.5">${escapeHtml(log.description || '')}</div>
+                </td>
+                <td class="py-3 px-3 text-center whitespace-nowrap">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold font-mono border ${statusClass}">
+                        <span class="material-symbols-outlined text-[13px]">${statusIcon}</span>
+                        <span>${log.status || 'OK'}</span>
+                    </span>
+                </td>
+                <td class="py-3 px-3 text-right whitespace-nowrap">
+                    <button type="button" onclick="openActivityDetailModal(${log.id})" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 shadow-2xs transition-colors inline-flex items-center gap-1 cursor-pointer">
+                        <span class="material-symbols-outlined text-[14px]">visibility</span>
+                        <span>View</span>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+
+    tableBody.innerHTML = html;
+}
+
+function openActivityDetailModal(logId) {
+    const log = currentActivityLogs.find(l => l.id === logId);
+    if (!log) return;
+
+    const modal = document.getElementById('modal-activity-detail');
+    if (!modal) return;
+
+    const titleElem = document.getElementById('modal-act-title');
+    const subElem = document.getElementById('modal-act-subtitle');
+    const descElem = document.getElementById('modal-act-description');
+    const statusBadge = document.getElementById('modal-act-status-badge');
+    const typeElem = document.getElementById('modal-act-type');
+    const projElem = document.getElementById('modal-act-project');
+    const timeElem = document.getElementById('modal-act-timestamp');
+    const ipElem = document.getElementById('modal-act-ip');
+    const jsonElem = document.getElementById('modal-act-json');
+
+    if (titleElem) titleElem.textContent = log.action || 'Activity Log Entry';
+    if (subElem) subElem.textContent = `Log ID #${log.id} • Registered ${log.created_at || ''}`;
+    if (descElem) descElem.textContent = log.description || 'No detailed description provided.';
+
+    if (statusBadge) {
+        statusBadge.textContent = log.status || 'SUCCESS';
+        if (log.status === 'ERROR') {
+            statusBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-rose-100 text-rose-800 border border-rose-200';
+        } else if (log.status === 'WARNING') {
+            statusBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-amber-100 text-amber-800 border border-amber-200';
+        } else {
+            statusBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-emerald-100 text-emerald-800 border border-emerald-200';
+        }
+    }
+
+    if (typeElem) typeElem.textContent = log.activity_type || '—';
+    if (projElem) projElem.textContent = log.project_code ? `${log.project_name || ''} (${log.project_code})` : 'Global System';
+    if (timeElem) timeElem.textContent = `${log.created_at || '—'} (${formatRelativeTime(log.created_at)})`;
+    if (ipElem) ipElem.textContent = log.ip_address || 'Internal Server';
+
+    if (jsonElem) {
+        const payload = log.details_parsed || log.details || { id: log.id, action: log.action, status: log.status };
+        jsonElem.textContent = typeof payload === 'object' ? JSON.stringify(payload, null, 2) : payload;
+    }
+
+    modal.classList.remove('hidden');
+}
+
+function closeActivityDetailModal() {
+    const modal = document.getElementById('modal-activity-detail');
+    if (modal) modal.classList.add('hidden');
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function initActivityLoggingUI() {
+    const btnRefresh = document.getElementById('btn-refresh-activity-logs');
+    if (btnRefresh) {
+        btnRefresh.addEventListener('click', () => loadActivityLogs());
+    }
+
+    const btnExport = document.getElementById('btn-export-activity-logs');
+    if (btnExport) {
+        btnExport.addEventListener('click', () => {
+            const project = document.getElementById('select-activity-project')?.value || 'ALL';
+            const type = document.getElementById('select-activity-type')?.value || 'ALL';
+            const status = document.getElementById('select-activity-status')?.value || 'ALL';
+            const search = document.getElementById('input-activity-search')?.value.trim() || '';
+            const params = new URLSearchParams({ project, type, status, search });
+            window.location.href = `/api/activity-logs/export?${params.toString()}`;
+        });
+    }
+
+    const searchInput = document.getElementById('input-activity-search');
+    const clearSearchBtn = document.getElementById('btn-clear-activity-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            if (clearSearchBtn) {
+                if (searchInput.value.trim()) clearSearchBtn.classList.remove('hidden');
+                else clearSearchBtn.classList.add('hidden');
+            }
+            clearTimeout(activitySearchDebounceTimer);
+            activitySearchDebounceTimer = setTimeout(() => {
+                loadActivityLogs();
+            }, 300);
+        });
+    }
+
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', () => {
+            if (searchInput) searchInput.value = '';
+            clearSearchBtn.classList.add('hidden');
+            loadActivityLogs();
+        });
+    }
+
+    ['select-activity-project', 'select-activity-type', 'select-activity-status'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', () => loadActivityLogs());
+    });
+
+    const btnClearFilters = document.getElementById('btn-clear-activity-filters');
+    if (btnClearFilters) {
+        btnClearFilters.addEventListener('click', () => {
+            const p = document.getElementById('select-activity-project');
+            const t = document.getElementById('select-activity-type');
+            const s = document.getElementById('select-activity-status');
+            const q = document.getElementById('input-activity-search');
+            if (p) p.value = 'ALL';
+            if (t) t.value = 'ALL';
+            if (s) s.value = 'ALL';
+            if (q) q.value = '';
+            if (clearSearchBtn) clearSearchBtn.classList.add('hidden');
+            loadActivityLogs();
+        });
+    }
+
+    const btnCloseModal = document.getElementById('btn-close-activity-modal');
+    const btnDoneModal = document.getElementById('btn-modal-done');
+    const modal = document.getElementById('modal-activity-detail');
+    if (btnCloseModal) btnCloseModal.addEventListener('click', closeActivityDetailModal);
+    if (btnDoneModal) btnDoneModal.addEventListener('click', closeActivityDetailModal);
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeActivityDetailModal();
+        });
+    }
+
+    const btnCopyJson = document.getElementById('btn-copy-activity-json');
+    if (btnCopyJson) {
+        btnCopyJson.addEventListener('click', () => {
+            const jsonElem = document.getElementById('modal-act-json');
+            if (jsonElem) {
+                navigator.clipboard.writeText(jsonElem.textContent).then(() => {
+                    btnCopyJson.innerHTML = '<span class="material-symbols-outlined text-[14px]">check</span><span>Copied!</span>';
+                    setTimeout(() => {
+                        btnCopyJson.innerHTML = '<span class="material-symbols-outlined text-[14px]">content_copy</span><span>Copy JSON</span>';
+                    }, 2000);
+                });
+            }
+        });
+    }
+
+    // Auto-refresh interval (every 10s if tab-audit is visible and checkbox checked)
+    if (activityAutoRefreshTimer) clearInterval(activityAutoRefreshTimer);
+    activityAutoRefreshTimer = setInterval(() => {
+        const chk = document.getElementById('checkbox-activity-autorefresh');
+        const auditTab = document.getElementById('tab-audit');
+        if (chk && chk.checked && auditTab && !auditTab.classList.contains('hidden')) {
+            loadActivityLogs();
+        }
+    }, 10000);
+}
+
 

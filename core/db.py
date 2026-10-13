@@ -148,6 +148,25 @@ class DatabaseManager:
                         );
                     """)
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_unit_project ON units(project_code);")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS activity_logs (
+                            id SERIAL PRIMARY KEY,
+                            created_at VARCHAR(50) NOT NULL,
+                            timestamp_iso VARCHAR(50),
+                            activity_type VARCHAR(50) NOT NULL,
+                            action VARCHAR(100) NOT NULL,
+                            project_code VARCHAR(20),
+                            project_name VARCHAR(255),
+                            description TEXT NOT NULL,
+                            details TEXT,
+                            status VARCHAR(20) DEFAULT 'SUCCESS',
+                            ip_address VARCHAR(50),
+                            user_agent VARCHAR(255)
+                        );
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_created ON activity_logs(created_at);")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_type ON activity_logs(activity_type);")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_project ON activity_logs(project_code);")
                 else:
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS projects (
@@ -200,6 +219,25 @@ class DatabaseManager:
                         );
                     """)
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_unit_project ON units(project_code);")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS activity_logs (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            created_at TEXT NOT NULL,
+                            timestamp_iso TEXT,
+                            activity_type TEXT NOT NULL,
+                            action TEXT NOT NULL,
+                            project_code TEXT,
+                            project_name TEXT,
+                            description TEXT NOT NULL,
+                            details TEXT,
+                            status TEXT DEFAULT 'SUCCESS',
+                            ip_address TEXT,
+                            user_agent TEXT
+                        );
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_created ON activity_logs(created_at);")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_type ON activity_logs(activity_type);")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_project ON activity_logs(project_code);")
                 conn.commit()
                 print("[DatabaseManager] Schema verified successfully.")
         except Exception as e:
@@ -801,7 +839,110 @@ class DatabaseManager:
             print(f"[DatabaseManager] Purge error: {e}")
         return deleted_count
 
+    def insert_activity_log(self, activity_type, action, description, project_code=None, project_name=None, details=None, status="SUCCESS", ip_address=None, user_agent=None, created_at=None, timestamp_iso=None):
+        now = datetime.now()
+        if not created_at:
+            created_at = now.strftime("%Y-%m-%d %H:%M:%S")
+        if not timestamp_iso:
+            timestamp_iso = now.isoformat()
+        
+        details_str = json.dumps(details) if isinstance(details, (dict, list)) else (str(details) if details else None)
+        placeholder = "%s" if self.is_postgres else "?"
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(f"""
+                    INSERT INTO activity_logs (created_at, timestamp_iso, activity_type, action, project_code, project_name, description, details, status, ip_address, user_agent)
+                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+                """, (created_at, timestamp_iso, activity_type, action, project_code or "", project_name or "", description, details_str, status or "SUCCESS", ip_address or "", user_agent or ""))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"[DatabaseManager] Activity log insert error: {e}")
+            return False
+
+    def get_activity_logs(self, project_code=None, activity_type=None, status=None, search=None, limit=100, offset=0):
+        placeholder = "%s" if self.is_postgres else "?"
+        clauses = []
+        params = []
+        if project_code and project_code != "ALL":
+            clauses.append(f"project_code = {placeholder}")
+            params.append(project_code)
+        if activity_type and activity_type != "ALL":
+            clauses.append(f"activity_type = {placeholder}")
+            params.append(activity_type)
+        if status and status != "ALL":
+            clauses.append(f"status = {placeholder}")
+            params.append(status)
+        if search:
+            search_pattern = f"%{search.strip()}%"
+            clauses.append(f"(description LIKE {placeholder} OR action LIKE {placeholder} OR project_name LIKE {placeholder} OR details LIKE {placeholder})")
+            params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+
+        where_clause = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+        count_sql = f"SELECT COUNT(*) FROM activity_logs {where_clause}"
+        data_sql = f"SELECT id, created_at, timestamp_iso, activity_type, action, project_code, project_name, description, details, status, ip_address, user_agent FROM activity_logs {where_clause} ORDER BY id DESC LIMIT {int(limit)} OFFSET {int(offset)}"
+
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(count_sql, tuple(params))
+                total = cur.fetchone()[0]
+
+                cur.execute(data_sql, tuple(params))
+                rows = cur.fetchall()
+                logs = []
+                for r in rows:
+                    if self.is_postgres:
+                        row_dict = {
+                            "id": r[0], "created_at": r[1], "timestamp_iso": r[2], "activity_type": r[3],
+                            "action": r[4], "project_code": r[5], "project_name": r[6], "description": r[7],
+                            "details": r[8], "status": r[9], "ip_address": r[10], "user_agent": r[11]
+                        }
+                    else:
+                        row_dict = dict(r)
+                    det = row_dict.get("details")
+                    if det:
+                        try:
+                            row_dict["details_parsed"] = json.loads(det)
+                        except Exception:
+                            row_dict["details_parsed"] = None
+                    logs.append(row_dict)
+                return {"total": total, "logs": logs}
+        except Exception as e:
+            print(f"[DatabaseManager] Activity log query error: {e}")
+            return {"total": 0, "logs": []}
+
+    def get_activity_stats(self):
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM activity_logs")
+                total = cur.fetchone()[0]
+
+                cur.execute("SELECT activity_type, COUNT(*) FROM activity_logs GROUP BY activity_type")
+                by_type = {r[0]: r[1] for r in cur.fetchall()}
+
+                cur.execute("SELECT status, COUNT(*) FROM activity_logs GROUP BY status")
+                by_status = {r[0]: r[1] for r in cur.fetchall()}
+
+                cur.execute("SELECT created_at FROM activity_logs ORDER BY id DESC LIMIT 1")
+                last_row = cur.fetchone()
+                last_active = last_row[0] if last_row else None
+
+                return {
+                    "total": total,
+                    "by_type": by_type,
+                    "by_status": by_status,
+                    "last_active": last_active
+                }
+        except Exception as e:
+            print(f"[DatabaseManager] Activity stats error: {e}")
+            return {"total": 0, "by_type": {}, "by_status": {}, "last_active": None}
+
 
 # Singleton instance
 db = DatabaseManager()
+
 

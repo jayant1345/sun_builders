@@ -18,6 +18,12 @@ from core.gst_rules import (
 )
 from core.excel_generator import ExcelGenerator
 from core.db import db
+from core.activity_logger import (
+    log_activity, log_tally_sync, log_gstr_generation, log_bu_update,
+    log_voucher_override, log_unit_bu_override, log_unit_master_import,
+    log_report_download, log_purge_vouchers, export_activity_logs_csv,
+    ActivityType, ActivityStatus
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "project_master.json")
@@ -516,6 +522,14 @@ def api_generate():
         logs.append(f"[{timestamp}] 23 Sheets generated with verified mathematical formulas.")
         logs.append(f"[{timestamp}] Output saved: {filename}")
 
+        log_gstr_generation(
+            month=month,
+            filename=filename,
+            summary=summary,
+            logs_count=len(logs),
+            ip_address=request.remote_addr
+        )
+
         return jsonify({
             "status": "success",
             "month": month,
@@ -526,6 +540,15 @@ def api_generate():
         })
     except Exception as e:
         logs.append(f"[{timestamp}] Error during Excel generation: {str(e)}")
+        log_activity(
+            activity_type=ActivityType.GSTR_GENERATE,
+            action=f"Generate GSTR-1 ({month}) FAILED",
+            description=f"Error generating GSTR-1 for {month}: {str(e)}",
+            project_code="ALL",
+            status=ActivityStatus.ERROR,
+            details={"month": month, "error": str(e)},
+            ip_address=request.remote_addr
+        )
         return jsonify({"status": "error", "message": str(e), "logs": logs}), 500
 
 @app.route("/api/download/<filename>", methods=["GET"])
@@ -541,6 +564,7 @@ def api_download(filename):
             except Exception as e:
                 print(f"[Download Auto-Gen Error]: {e}")
     if os.path.exists(file_path):
+        log_report_download(filename=filename, ip_address=request.remote_addr)
         return send_file(file_path, as_attachment=True, download_name=filename)
     return jsonify({"error": "File not found"}), 404
 
@@ -656,6 +680,17 @@ def _perform_live_tally_sync(target_project=None):
     total_deductions = sum(float(v.get("deductions", 0) or 0) for v in vouchers)
     total_taxable = sum(float(v.get("taxable_amount", 0) or 0) for v in vouchers)
 
+    log_tally_sync(
+        project_code=target_code,
+        project_name=project_display,
+        vouchers_count=len(vouchers),
+        inserted=sync_res.get("inserted", 0),
+        updated=sync_res.get("updated", 0),
+        unchanged=sync_res.get("unchanged", len(vouchers)),
+        source=f"Live Tally - {active_company_name}",
+        periods=list(sync_res.get("periods", []))
+    )
+
     return {
         "status": "success",
         "connected": True,
@@ -734,6 +769,17 @@ def api_submit_sync_result():
     data = request.get_json() or {}
     with _sync_bridge_lock:
         _last_sync_result = data
+    
+    log_activity(
+        activity_type=ActivityType.TALLY_SYNC,
+        action="Cloud Sync Result Received",
+        description=f"Local bridge agent submitted sync result for {data.get('project_name', 'project')}: {data.get('message', 'Completed')}",
+        project_code=data.get("project_code", ""),
+        project_name=data.get("project_name", ""),
+        details=data,
+        status=ActivityStatus.SUCCESS if data.get("status") == "success" else ActivityStatus.WARNING,
+        ip_address=request.remote_addr
+    )
     return jsonify({"status": "ok"})
 
 @app.route("/api/tally/sync_result/<request_id>", methods=["GET"])
@@ -1153,6 +1199,9 @@ def api_bu_settings():
         if not target_pkey:
             return jsonify({"status": "error", "message": f"Project code '{code}' not found."}), 404
         
+        old_bu_date = projects[target_pkey].get("bu_permission_date")
+        old_has_bu = projects[target_pkey].get("has_bu", False)
+
         has_bu = bool(data.get("has_bu", False))
         bu_date = data.get("bu_permission_date")
         if bu_date:
@@ -1176,6 +1225,18 @@ def api_bu_settings():
                 projects[target_pkey]["default_residential_rate"] = 0.05
         
         save_project_master(master)
+
+        log_bu_update(
+            project_code=code,
+            project_name=projects[target_pkey].get("display_name", code),
+            old_date=old_bu_date,
+            new_date=bu_date if has_bu else None,
+            old_status="Obtained" if old_has_bu else "Under Construction",
+            new_status="Obtained" if has_bu else "Under Construction",
+            reference_no=projects[target_pkey].get("bu_reference_no", ""),
+            authority=projects[target_pkey].get("authority", ""),
+            ip_address=request.remote_addr
+        )
         
         return jsonify({
             "status": "success",
@@ -1304,6 +1365,16 @@ def api_projects_create():
         except Exception as e:
             print(f"[Project Create] DB sync warning: {e}")
 
+    log_activity(
+        activity_type=ActivityType.PROJECT_CONFIG,
+        action="Create Project",
+        description=f"Created new project: {name} ({code}), Type: {p_type}, GST Rate: {int(rate_val * 100)}%",
+        project_code=code,
+        project_name=name,
+        details=new_cfg,
+        ip_address=request.remote_addr
+    )
+
     return jsonify({
         "status": "success",
         "message": f"Project '{name}' ({code}) successfully created and registered!",
@@ -1336,6 +1407,14 @@ def api_projects_delete():
             db.delete_project(code)
         except Exception as e:
             print(f"[Project Delete] DB sync warning: {e}")
+
+    log_activity(
+        activity_type=ActivityType.PROJECT_CONFIG,
+        action="Delete Project",
+        description=f"Deleted project: {code}",
+        project_code=code,
+        ip_address=request.remote_addr
+    )
 
     return jsonify({"status": "success", "message": f"Project '{code}' deleted successfully."})
 
@@ -1918,6 +1997,16 @@ def api_vouchers_override():
     ok = db.set_voucher_override(target_key, vch_no, date, bu_status=bu_status, is_income=is_income, rate=rate, note=note)
     if not ok:
         return jsonify({"status": "error", "message": "Voucher not found for that project/vch_no/date"}), 404
+
+    log_voucher_override(
+        project_code=target_key,
+        vch_no=vch_no,
+        date=date,
+        override_fields={"bu_status": bu_status, "is_income": is_income, "rate": rate},
+        note=note,
+        ip_address=request.remote_addr
+    )
+
     return jsonify({"status": "success"})
 
 @app.route("/api/units/override-bu", methods=["POST"])
@@ -1944,6 +2033,21 @@ def api_units_override_bu():
     target_key = pcfg["code"] if pcfg else project
 
     updated_count = db.set_unit_bu_override(target_key, unit_no, bu_status=bu_status, note=note)
+
+    log_unit_bu_override(
+        project_code=target_key,
+        unit_no=unit_no,
+        bu_status=bu_status or "auto",
+        affected_count=updated_count,
+        note=note,
+        ip_address=request.remote_addr
+    )
+
+    return jsonify({
+        "status": "success",
+        "message": f"Unit {unit_no} updated: {updated_count} vouchers set to {bu_status}.",
+        "updated_count": updated_count
+    })
 @app.route("/api/units/sample-template", methods=["GET"])
 def api_units_sample_template():
     """Generates and downloads a clean Excel template for project unit inventory."""
@@ -2098,6 +2202,12 @@ def api_units_upload_excel():
             return jsonify({"status": "error", "message": "No valid unit rows found in file."}), 400
 
         saved_count = db.save_units(project_code, units)
+        log_unit_master_import(
+            project_code=project_code,
+            filename=filename,
+            imported_count=saved_count,
+            ip_address=request.remote_addr
+        )
         return jsonify({
             "status": "success",
             "message": f"Successfully imported {saved_count} units into {project_code} inventory!",
@@ -2156,6 +2266,14 @@ def api_units_generate_plan():
                 })
 
     saved_count = db.save_units(project_code, units)
+    log_activity(
+        activity_type=ActivityType.UNIT_PLAN_GENERATE,
+        action="Generate Specimen Unit Plan",
+        description=f"Generated {saved_count} units across blocks {','.join(blocks)} for project {project_code}.",
+        project_code=project_code,
+        details={"blocks": blocks, "start_floor": start_floor, "end_floor": end_floor, "units_per_floor": units_per_floor, "count": saved_count},
+        ip_address=request.remote_addr
+    )
     return jsonify({
         "status": "success",
         "message": f"Successfully generated and registered {saved_count} units for project {project_code}!",
@@ -2208,6 +2326,18 @@ def api_vouchers_sync():
     except Exception as e:
         print("Error saving sync data to database:", e)
 
+    log_tally_sync(
+        project_code=project_code,
+        project_name=project,
+        vouchers_count=len(vouchers),
+        inserted=sync_res.get("inserted", 0),
+        updated=sync_res.get("updated", 0),
+        unchanged=sync_res.get("unchanged", 0),
+        source=f"Cloud Sync - {source_name or project}",
+        periods=sync_res.get("periods", []),
+        ip_address=request.remote_addr
+    )
+
     return jsonify({
         "status": "success",
         "message": f"Incremental Sync Complete: +{sync_res.get('inserted', 0)} new vouchers added, {sync_res.get('unchanged', 0)} verified consistent (0 duplicates).",
@@ -2223,12 +2353,70 @@ def api_vouchers_sync():
 def api_vouchers_purge_fake():
     """Purges any synthetic / Excel-extracted mock vouchers (e.g. FP-2608-*) from DB."""
     purged_count = db.purge_fake_vouchers()
+    log_purge_vouchers(purged_count=purged_count, ip_address=request.remote_addr)
     return jsonify({
         "status": "success",
         "purged_count": purged_count,
         "message": f"Successfully purged {purged_count} synthetic vouchers. Only 100% authentic Tally vouchers remain in the database."
     })
 
+
+@app.route("/api/activity-logs", methods=["GET"])
+def api_activity_logs():
+    """Returns paginated activity & audit logs with live statistics for easy tracing."""
+    project = request.args.get("project", "ALL")
+    act_type = request.args.get("type", "ALL")
+    status = request.args.get("status", "ALL")
+    search = request.args.get("search", "")
+    try:
+        limit = int(request.args.get("limit", 100))
+        offset = int(request.args.get("offset", 0))
+    except (ValueError, TypeError):
+        limit = 100
+        offset = 0
+
+    res = db.get_activity_logs(
+        project_code=project,
+        activity_type=act_type,
+        status=status,
+        search=search,
+        limit=limit,
+        offset=offset
+    )
+    stats = db.get_activity_stats()
+    return jsonify({
+        "status": "success",
+        "total": res.get("total", 0),
+        "count": len(res.get("logs", [])),
+        "limit": limit,
+        "offset": offset,
+        "stats": stats,
+        "logs": res.get("logs", [])
+    })
+
+
+@app.route("/api/activity-logs/export", methods=["GET"])
+def api_activity_logs_export():
+    """Exports activity logs as CSV for statutory audit & compliance records."""
+    from flask import Response
+    project = request.args.get("project", "ALL")
+    act_type = request.args.get("type", "ALL")
+    status = request.args.get("status", "ALL")
+    search = request.args.get("search", "")
+
+    csv_data = export_activity_logs_csv(
+        project_code=project,
+        activity_type=act_type,
+        status=status,
+        search=search
+    )
+    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"Sun_Builders_Activity_Audit_Trail_{timestamp_str}.csv"
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 if __name__ == "__main__":
@@ -2238,7 +2426,16 @@ if __name__ == "__main__":
     print("  SUN BUILDERS REAL ESTATE GST AUTOMATION - FLASK SERVER")
     print(f"  Running at: http://localhost:{port}")
     print("=" * 65)
+    log_activity(
+        activity_type=ActivityType.SYSTEM_EVENT,
+        action="Server Started",
+        description=f"Flask server running on port {port}. Engine: {'PostgreSQL' if db.is_postgres else 'SQLite'}.",
+        project_code="SYSTEM",
+        project_name="Core Engine",
+        status=ActivityStatus.SUCCESS
+    )
     if not is_cloud_env:
         threading.Thread(target=_local_cloud_sync_agent, daemon=True).start()
     app.run(host="0.0.0.0", port=port, debug=False)
+
 
