@@ -1046,7 +1046,11 @@
                 <p id="units-tab-subtitle" class="text-xs text-slate-500 font-medium">Unit inventory cross-referenced with synced Tally receipts</p>
               </div>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <a href="/api/units/sample-template" download="Sun_Builders_Specimen_Plan_Layout.xlsx" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 shadow-xs transition-all active:scale-[0.98] cursor-pointer" title="Download Specimen Plan Layout Excel Template">
+                <span class="material-symbols-outlined text-[17px] text-emerald-700">download_for_offline</span>
+                <span>Download Specimen (.xlsx)</span>
+              </a>
               <button id="btn-open-plan-modal" onclick="window.openProjectPlanModal && window.openProjectPlanModal()" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 shadow-xs transition-all active:scale-[0.98] cursor-pointer" title="Configure towers, floors, flats or upload Excel file">
                 <span class="material-symbols-outlined text-[17px] text-indigo-600">domain_add</span>
                 <span>Configure / Upload Unit Plan</span>
@@ -2283,14 +2287,25 @@
 
         <!-- TAB 2: EXCEL / CSV UPLOAD -->
         <div id="pane-plan-upload" class="space-y-4 hidden">
-          <div class="flex items-center justify-between p-3.5 bg-blue-50 border border-blue-200 rounded-xl">
-            <div>
-              <div class="text-xs font-bold text-blue-900">Need the standard spreadsheet format?</div>
-              <div class="text-[11px] text-blue-700">Columns: Unit No, Tower/Block, Floor, Flat Label, Usage, Size, Carpet Area</div>
+          <!-- Prominent Specimen Plan Layout Download Card -->
+          <div class="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div class="flex items-start gap-3">
+              <div class="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-700 shadow-2xs shrink-0">
+                <span class="material-symbols-outlined text-[24px]">table_view</span>
+              </div>
+              <div>
+                <div class="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5">
+                  <span>Official Specimen Plan Layout Sheet</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200/80 text-emerald-800">.XLSX</span>
+                </div>
+                <div class="text-[11px] text-emerald-800 font-medium mt-0.5">
+                  Pre-formatted columns: Unit No, Tower/Block, Floor, Flat Label, Usage, Super Built-up, RERA Carpet Area
+                </div>
+              </div>
             </div>
-            <a href="/api/units/sample-template" download class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 text-xs font-bold shadow-xs hover:bg-blue-50 transition-colors">
-              <span class="material-symbols-outlined text-[15px]">download</span>
-              <span>Download Template</span>
+            <a href="/api/units/sample-template" download="Sun_Builders_Specimen_Plan_Layout.xlsx" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all active:scale-[0.98] shrink-0 cursor-pointer">
+              <span class="material-symbols-outlined text-[17px]">download_for_offline</span>
+              <span>Download Specimen Sheet</span>
             </a>
           </div>
 
@@ -2315,7 +2330,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20261013_v16"></script>
+  <script src="/static/js/app.js?v=20261013_v17"></script>
   <script>
     // Immediate fallback: if user clicks before DOM fully ready
     if (!window.openBuModal) {
