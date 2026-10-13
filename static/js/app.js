@@ -2324,6 +2324,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    window.openProjectPlanModal = openProjectPlanModal;
+    window.closeProjectPlanModal = closeProjectPlanModal;
+
     if (btnOpenPlanModal) btnOpenPlanModal.addEventListener('click', openProjectPlanModal);
     if (btnProjectsTabOpenPlan) btnProjectsTabOpenPlan.addEventListener('click', openProjectPlanModal);
     if (btnClosePlanModal) btnClosePlanModal.addEventListener('click', closeProjectPlanModal);

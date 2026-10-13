@@ -824,7 +824,7 @@
                 <span class="material-symbols-outlined text-[16px]">add_circle</span>
                 <span>Add Project</span>
               </button>
-              <button id="btn-projects-tab-open-plan" type="button" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 hover:bg-indigo-100 text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer" title="Configure towers, floors, flats or upload Excel file">
+              <button id="btn-projects-tab-open-plan" onclick="window.openProjectPlanModal && window.openProjectPlanModal()" type="button" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 hover:bg-indigo-100 text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer" title="Configure towers, floors, flats or upload Excel file">
                 <span class="material-symbols-outlined text-[16px] text-indigo-600">apartment</span>
                 <span>Unit Inventory Plan</span>
               </button>
@@ -1047,7 +1047,7 @@
               </div>
             </div>
             <div class="flex items-center gap-2">
-              <button id="btn-open-plan-modal" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 shadow-xs transition-all active:scale-[0.98] cursor-pointer" title="Configure towers, floors, flats or upload Excel file">
+              <button id="btn-open-plan-modal" onclick="window.openProjectPlanModal && window.openProjectPlanModal()" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 shadow-xs transition-all active:scale-[0.98] cursor-pointer" title="Configure towers, floors, flats or upload Excel file">
                 <span class="material-symbols-outlined text-[17px] text-indigo-600">domain_add</span>
                 <span>Configure / Upload Unit Plan</span>
               </button>
@@ -2165,6 +2165,8 @@
 
       </form>
     </div>
+  </div>
+
   <!-- ===================================================================== -->
   <!-- MODAL: PROJECT PLAN & UNIT INVENTORY (GENERATOR & EXCEL UPLOAD)       -->
   <!-- ===================================================================== -->
@@ -2182,7 +2184,7 @@
             <p class="text-xs text-slate-500 font-medium">Configure towers, floors, &amp; flats or upload an Excel unit inventory master</p>
           </div>
         </div>
-        <button type="button" id="btn-close-plan-modal" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+        <button type="button" id="btn-close-plan-modal" onclick="window.closeProjectPlanModal && window.closeProjectPlanModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
       </div>
@@ -2271,7 +2273,7 @@
           </div>
 
           <div class="pt-2 flex justify-end gap-2.5">
-            <button type="button" id="btn-cancel-plan-modal" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+            <button type="button" id="btn-cancel-plan-modal" onclick="window.closeProjectPlanModal && window.closeProjectPlanModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
             <button type="button" id="btn-submit-generate-plan" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-[0.98] cursor-pointer">
               <span class="material-symbols-outlined text-[16px]">domain_add</span>
               <span>Generate &amp; Register Inventory</span>
@@ -2300,7 +2302,7 @@
           <div id="plan-upload-status" class="hidden text-xs p-3 rounded-xl"></div>
 
           <div class="pt-2 flex justify-end gap-2.5">
-            <button type="button" id="btn-cancel-plan-modal-2" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+            <button type="button" id="btn-cancel-plan-modal-2" onclick="window.closeProjectPlanModal && window.closeProjectPlanModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
             <button type="button" id="btn-submit-upload-plan" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-[0.98] cursor-pointer">
               <span class="material-symbols-outlined text-[16px]">upload_file</span>
               <span>Upload &amp; Ingest Unit Inventory</span>
@@ -2313,7 +2315,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20261012_v15"></script>
+  <script src="/static/js/app.js?v=20261013_v16"></script>
   <script>
     // Immediate fallback: if user clicks before DOM fully ready
     if (!window.openBuModal) {
@@ -2332,6 +2334,34 @@
         }
       };
     }
+
+    window.openProjectPlanModal = function() {
+      var m = document.getElementById('modal-project-plan');
+      if (m) {
+        m.classList.remove('hidden');
+        m.style.display = 'flex';
+        var planSel = document.getElementById('plan-select-project');
+        var srcSel = document.getElementById('select-units-project') || document.getElementById('select-header-project');
+        if (planSel && srcSel && srcSel.options.length > 0) {
+          planSel.innerHTML = '';
+          for (var i = 0; i < srcSel.options.length; i++) {
+            var opt = document.createElement('option');
+            opt.value = srcSel.options[i].value;
+            opt.textContent = srcSel.options[i].textContent;
+            planSel.appendChild(opt);
+          }
+          if (srcSel.value) planSel.value = srcSel.value;
+        }
+      }
+    };
+
+    window.closeProjectPlanModal = function() {
+      var m = document.getElementById('modal-project-plan');
+      if (m) {
+        m.classList.add('hidden');
+        m.style.display = 'none';
+      }
+    };
   </script>
 </body>
 </html>
