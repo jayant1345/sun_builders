@@ -274,13 +274,30 @@
         </div>
 
         <div class="flex items-center gap-2 pl-2 border-l border-outline-variant">
-          <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-primary-container p-[1px] flex items-center justify-center font-bold text-xs bg-surface-container-high text-primary">
-            CA
+          <div class="flex items-center gap-2 px-2 py-1 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
+            <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-primary to-primary-container p-[1px] flex items-center justify-center font-bold text-[11px] text-white">
+              AD
+            </div>
+            <div class="text-left">
+              <div class="text-xs font-bold text-on-surface leading-tight flex items-center gap-1.5">
+                <span id="header-username-display">admin</span>
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" title="Active Admin Session"></span>
+              </div>
+              <div class="text-[10px] text-on-surface-variant font-medium leading-tight">CA Admin</div>
+            </div>
           </div>
-          <div class="hidden 2xl:block text-left">
-            <div class="text-xs font-semibold text-on-surface leading-tight">CA Office Admin</div>
-            <div class="text-[11px] text-on-surface-variant leading-tight">Senior Tax Partner</div>
-          </div>
+
+          <!-- Change Password Button -->
+          <button type="button" onclick="openChangePasswordModal()" class="hidden md:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 text-xs font-semibold shadow-xs transition-all cursor-pointer" title="Change Admin Password">
+            <span class="material-symbols-outlined text-[15px] text-slate-500">key</span>
+            <span>Password</span>
+          </button>
+
+          <!-- Logout Button -->
+          <a href="/logout" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold shadow-xs transition-all cursor-pointer" title="Sign out of Admin Session">
+            <span class="material-symbols-outlined text-[15px]">logout</span>
+            <span class="hidden sm:inline">Logout</span>
+          </a>
         </div>
       </div>
     </header>
@@ -2588,10 +2605,157 @@
       </div>
 
     </div>
+  <!-- MODAL: CHANGE ADMIN PASSWORD -->
+  <div id="modal-change-password" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+    <div class="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden transform transition-all">
+      <!-- Modal Header -->
+      <div class="px-6 py-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-blue-400">
+            <span class="material-symbols-outlined text-[18px]">lock_reset</span>
+          </div>
+          <div>
+            <h3 class="font-display font-extrabold text-sm tracking-tight">Change Admin Password</h3>
+            <p class="text-[11px] text-slate-400">Update administrative password for this portal</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeChangePasswordModal()" class="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer">
+          <span class="material-symbols-outlined text-[20px]">close</span>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <form id="form-change-password" class="p-6 space-y-4" onsubmit="submitChangePassword(event)">
+        <div id="pwd-modal-alert" class="hidden p-3 rounded-xl text-xs font-medium flex items-center gap-2">
+          <span id="pwd-modal-alert-icon" class="material-symbols-outlined text-[18px]">info</span>
+          <span id="pwd-modal-alert-msg"></span>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Current Password</label>
+          <input type="password" id="old-password" required placeholder="Enter current password (default: admin)" class="w-full text-xs font-mono px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:bg-white text-slate-800 transition-all"/>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">New Password</label>
+          <input type="password" id="new-password" required minlength="4" placeholder="Enter new strong password" class="w-full text-xs font-mono px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:bg-white text-slate-800 transition-all"/>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Confirm New Password</label>
+          <input type="password" id="confirm-password" required minlength="4" placeholder="Confirm new password" class="w-full text-xs font-mono px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 focus:bg-white text-slate-800 transition-all"/>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2.5">
+          <button type="button" onclick="closeChangePasswordModal()" class="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-600 transition-all cursor-pointer">
+            Cancel
+          </button>
+          <button type="submit" id="btn-save-password" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer">
+            <span id="btn-save-pwd-text">Update Password</span>
+            <span id="btn-save-pwd-spinner" class="hidden material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script src="/static/js/app.js?v=20261013_v17"></script>
   <script>
+    // Global Fetch 401 Interceptor: If session expires, redirect to /login
+    (function() {
+      const originalFetch = window.fetch;
+      window.fetch = async function(...args) {
+        try {
+          const response = await originalFetch(...args);
+          if (response.status === 401 && typeof args[0] === 'string' && !args[0].includes('/api/auth/login')) {
+            console.warn('Authentication expired or unauthorized. Redirecting to login.');
+            window.location.href = '/login';
+          }
+          return response;
+        } catch (err) {
+          throw err;
+        }
+      };
+    })();
+
+    function openChangePasswordModal() {
+      const m = document.getElementById('modal-change-password');
+      if (m) {
+        m.classList.remove('hidden');
+        m.style.display = 'flex';
+        document.getElementById('pwd-modal-alert').classList.add('hidden');
+        document.getElementById('old-password').value = '';
+        document.getElementById('new-password').value = '';
+        document.getElementById('confirm-password').value = '';
+        document.getElementById('old-password').focus();
+      }
+    }
+
+    function closeChangePasswordModal() {
+      const m = document.getElementById('modal-change-password');
+      if (m) {
+        m.classList.add('hidden');
+        m.style.display = 'none';
+      }
+    }
+
+    async function submitChangePassword(event) {
+      event.preventDefault();
+      const oldPwd = document.getElementById('old-password').value;
+      const newPwd = document.getElementById('new-password').value;
+      const confirmPwd = document.getElementById('confirm-password').value;
+      const alertBox = document.getElementById('pwd-modal-alert');
+      const alertMsg = document.getElementById('pwd-modal-alert-msg');
+      const alertIcon = document.getElementById('pwd-modal-alert-icon');
+      const btnText = document.getElementById('btn-save-pwd-text');
+      const btnSpinner = document.getElementById('btn-save-pwd-spinner');
+      const btn = document.getElementById('btn-save-password');
+
+      if (newPwd !== confirmPwd) {
+        alertBox.className = 'p-3 rounded-xl text-xs font-medium flex items-center gap-2 bg-red-50 border border-red-200 text-red-700';
+        alertIcon.textContent = 'error';
+        alertMsg.textContent = 'New passwords do not match!';
+        alertBox.classList.remove('hidden');
+        return;
+      }
+
+      btn.disabled = true;
+      btnText.textContent = 'Updating...';
+      btnSpinner.classList.remove('hidden');
+
+      try {
+        const resp = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ old_password: oldPwd, new_password: newPwd })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+          alertBox.className = 'p-3 rounded-xl text-xs font-medium flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800';
+          alertIcon.textContent = 'check_circle';
+          alertMsg.textContent = 'Password changed successfully! You can now use your new password.';
+          alertBox.classList.remove('hidden');
+          setTimeout(() => {
+            closeChangePasswordModal();
+          }, 1500);
+        } else {
+          alertBox.className = 'p-3 rounded-xl text-xs font-medium flex items-center gap-2 bg-red-50 border border-red-200 text-red-700';
+          alertIcon.textContent = 'error';
+          alertMsg.textContent = data.error || 'Failed to update password.';
+          alertBox.classList.remove('hidden');
+        }
+      } catch (e) {
+        alertBox.className = 'p-3 rounded-xl text-xs font-medium flex items-center gap-2 bg-red-50 border border-red-200 text-red-700';
+        alertIcon.textContent = 'error';
+        alertMsg.textContent = 'Network error while updating password.';
+        alertBox.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btnText.textContent = 'Update Password';
+        btnSpinner.classList.add('hidden');
+      }
+    }
+
     // Immediate fallback: if user clicks before DOM fully ready
     if (!window.openBuModal) {
       window.openBuModal = function(code) {

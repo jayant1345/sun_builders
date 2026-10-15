@@ -165,8 +165,16 @@ class DatabaseManager:
                         );
                     """)
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_act_created ON activity_logs(created_at);")
-                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_type ON activity_logs(activity_type);")
-                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_project ON activity_logs(project_code);")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS users (
+                            id SERIAL PRIMARY KEY,
+                            username VARCHAR(100) UNIQUE NOT NULL,
+                            password_hash VARCHAR(255) NOT NULL,
+                            role VARCHAR(50) DEFAULT 'admin',
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            last_login TIMESTAMP
+                        );
+                    """)
                 else:
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS projects (
@@ -238,8 +246,19 @@ class DatabaseManager:
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_act_created ON activity_logs(created_at);")
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_act_type ON activity_logs(activity_type);")
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_act_project ON activity_logs(project_code);")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS users (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT UNIQUE NOT NULL,
+                            password_hash TEXT NOT NULL,
+                            role TEXT DEFAULT 'admin',
+                            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                            last_login TEXT
+                        );
+                    """)
                 conn.commit()
                 print("[DatabaseManager] Schema verified successfully.")
+                self.seed_admin_user()
         except Exception as e:
             print(f"[DatabaseManager] Schema init warning: {e}")
 
@@ -940,6 +959,105 @@ class DatabaseManager:
         except Exception as e:
             print(f"[DatabaseManager] Activity stats error: {e}")
             return {"total": 0, "by_type": {}, "by_status": {}, "last_active": None}
+
+    def seed_admin_user(self):
+        """Ensure default admin user exists with password 'admin'."""
+        try:
+            from werkzeug.security import generate_password_hash
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("SELECT id FROM users WHERE username = %s;", ('admin',))
+                    if not cur.fetchone():
+                        p_hash = generate_password_hash("admin")
+                        cur.execute(
+                            "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s);",
+                            ('admin', p_hash, 'admin')
+                        )
+                        conn.commit()
+                        print("[DatabaseManager] Default admin user initialized (username: admin, password: admin).")
+                else:
+                    cur.execute("SELECT id FROM users WHERE username = ?;", ('admin',))
+                    if not cur.fetchone():
+                        p_hash = generate_password_hash("admin")
+                        cur.execute(
+                            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?);",
+                            ('admin', p_hash, 'admin')
+                        )
+                        conn.commit()
+                        print("[DatabaseManager] Default admin user initialized (username: admin, password: admin).")
+        except Exception as e:
+            print(f"[DatabaseManager] Seed admin user warning: {e}")
+
+    def get_user(self, username):
+        """Retrieve user record by username."""
+        if not username:
+            return None
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("SELECT id, username, password_hash, role, created_at, last_login FROM users WHERE username = %s;", (username.strip(),))
+                    row = cur.fetchone()
+                    if row:
+                        if hasattr(cur, 'description') and cur.description:
+                            cols = [d[0] for d in cur.description]
+                            return dict(zip(cols, row))
+                        return dict(row)
+                else:
+                    cur.execute("SELECT id, username, password_hash, role, created_at, last_login FROM users WHERE username = ?;", (username.strip(),))
+                    row = cur.fetchone()
+                    if row:
+                        return dict(row)
+        except Exception as e:
+            print(f"[DatabaseManager] get_user error: {e}")
+        return None
+
+    def verify_user(self, username, password):
+        """Verify username and password against database."""
+        from werkzeug.security import check_password_hash
+        user = self.get_user(username)
+        if not user:
+            return None
+        if check_password_hash(user["password_hash"], str(password or "")):
+            self.update_last_login(username)
+            return {
+                "id": user["id"],
+                "username": user["username"],
+                "role": user.get("role", "admin")
+            }
+        return None
+
+    def update_last_login(self, username):
+        """Update last login timestamp for user."""
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE username = %s;", (username,))
+                else:
+                    cur.execute("UPDATE users SET last_login = ? WHERE username = ?;", (now_str, username))
+                conn.commit()
+        except Exception as e:
+            print(f"[DatabaseManager] update_last_login error: {e}")
+
+    def update_password(self, username, new_password):
+        """Update user password with salted hash."""
+        from werkzeug.security import generate_password_hash
+        p_hash = generate_password_hash(new_password)
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("UPDATE users SET password_hash = %s WHERE username = %s;", (p_hash, username))
+                else:
+                    cur.execute("UPDATE users SET password_hash = ? WHERE username = ?;", (p_hash, username))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"[DatabaseManager] update_password error: {e}")
+            return False
 
 
 # Singleton instance

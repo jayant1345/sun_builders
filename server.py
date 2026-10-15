@@ -6,8 +6,9 @@ import threading
 import time
 import uuid
 import urllib.request
+import urllib.parse
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, session, redirect, url_for
 
 from core.tally_client import TallyClient
 from core.tally_file_reader import TallyFileReader
@@ -295,9 +296,212 @@ except Exception as _e:
     print(f"[DB Startup Seed] Notice: {_e}")
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or os.environ.get("SECRET_KEY") or "sun-builders-gst-jwt-secret-session-key-2026-llp"
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 7  # 7 days
 app.jinja_env.auto_reload = True
+
+PUBLIC_AUTH_PATHS = {
+    "/login",
+    "/logout",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/status",
+    # Automated Tally agent bridge routes for remote CA sync
+    "/api/tally/poll_sync",
+    "/api/tally/submit_sync_result",
+    "/api/vouchers/sync",
+}
+
+@app.before_request
+def enforce_authentication():
+    # 1. Allow static assets and favicon
+    if request.path.startswith("/static/") or request.path == "/favicon.ico":
+        return None
+
+    # 2. Allow explicitly public routes
+    if request.path in PUBLIC_AUTH_PATHS:
+        return None
+
+    # 3. Allow CORS preflight OPTIONS
+    if request.method == "OPTIONS":
+        return None
+
+    # 4. Check session
+    user = session.get("user")
+    if user:
+        return None
+
+    # 5. If unauthenticated API call -> 401 JSON
+    if request.path.startswith("/api/"):
+        return jsonify({
+            "error": "Authentication required. Please sign in as admin.",
+            "authenticated": False
+        }), 401
+
+    # 6. If unauthenticated page visit -> redirect to /login
+    target_path = request.full_path if request.query_string else request.path
+    if target_path and target_path != "/" and target_path != "/?":
+        return redirect(f"/login?next={urllib.parse.quote(target_path)}")
+    return redirect("/login")
+
+@app.route("/login", methods=["GET", "POST"])
+def login_view():
+    if request.method == "GET":
+        if session.get("user"):
+            return redirect("/")
+        return render_template("login.html", error=None)
+
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    remember = bool(request.form.get("remember"))
+
+    verified = db.verify_user(username, password)
+    if verified:
+        session.permanent = remember
+        session["user"] = verified["username"]
+        session["role"] = verified["role"]
+        log_activity(
+            activity_type=ActivityType.USER_LOGIN,
+            action="LOGIN_SUCCESS",
+            description=f"User '{username}' logged in successfully via web form.",
+            details={"username": username, "role": verified["role"]},
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent")
+        )
+        next_page = request.args.get("next") or "/"
+        return redirect(next_page)
+    else:
+        log_activity(
+            activity_type=ActivityType.USER_LOGIN,
+            action="LOGIN_FAILED",
+            description=f"Failed login attempt for username '{username}'.",
+            status=ActivityStatus.WARNING,
+            details={"username": username},
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent")
+        )
+        return render_template("login.html", error="Invalid username or password.")
+
+@app.route("/logout", methods=["GET", "POST"])
+def logout_view():
+    user = session.get("user")
+    if user:
+        log_activity(
+            activity_type=ActivityType.USER_LOGOUT,
+            action="LOGOUT",
+            description=f"User '{user}' signed out.",
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent")
+        )
+    session.clear()
+    return redirect("/login")
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    username = str(data.get("username", "")).strip()
+    password = str(data.get("password", ""))
+
+    if not username or not password:
+        return jsonify({"success": False, "error": "Username and password are required."}), 400
+
+    verified = db.verify_user(username, password)
+    if verified:
+        session.permanent = True
+        session["user"] = verified["username"]
+        session["role"] = verified["role"]
+        log_activity(
+            activity_type=ActivityType.USER_LOGIN,
+            action="LOGIN_SUCCESS",
+            description=f"User '{username}' logged in via API.",
+            details={"username": username, "role": verified["role"]},
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent")
+        )
+        return jsonify({
+            "success": True,
+            "user": {
+                "username": verified["username"],
+                "role": verified["role"]
+            }
+        })
+    else:
+        log_activity(
+            activity_type=ActivityType.USER_LOGIN,
+            action="LOGIN_FAILED",
+            description=f"API failed login attempt for '{username}'.",
+            status=ActivityStatus.WARNING,
+            details={"username": username},
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent")
+        )
+        return jsonify({"success": False, "error": "Invalid username or password."}), 401
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_auth_logout():
+    user = session.get("user")
+    if user:
+        log_activity(
+            activity_type=ActivityType.USER_LOGOUT,
+            action="LOGOUT",
+            description=f"User '{user}' logged out via API.",
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent")
+        )
+    session.clear()
+    return jsonify({"success": True})
+
+@app.route("/api/auth/status", methods=["GET"])
+def api_auth_status():
+    user = session.get("user")
+    if user:
+        return jsonify({
+            "authenticated": True,
+            "username": user,
+            "role": session.get("role", "admin")
+        })
+    return jsonify({
+        "authenticated": False,
+        "username": None,
+        "role": None
+    })
+
+@app.route("/api/auth/change-password", methods=["POST"])
+def api_auth_change_password():
+    user = session.get("user")
+    if not user:
+        return jsonify({"success": False, "error": "Authentication required."}), 401
+
+    data = request.get_json(silent=True) or {}
+    old_password = str(data.get("old_password", ""))
+    new_password = str(data.get("new_password", "")).strip()
+
+    if not old_password or not new_password:
+        return jsonify({"success": False, "error": "Old and new password are required."}), 400
+
+    if len(new_password) < 4:
+        return jsonify({"success": False, "error": "New password must be at least 4 characters long."}), 400
+
+    verified = db.verify_user(user, old_password)
+    if not verified:
+        return jsonify({"success": False, "error": "Current password is incorrect."}), 400
+
+    success = db.update_password(user, new_password)
+    if success:
+        log_activity(
+            activity_type=ActivityType.PASSWORD_CHANGE,
+            action="PASSWORD_UPDATED",
+            description=f"Password for user '{user}' was successfully changed.",
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent")
+        )
+        return jsonify({"success": True, "message": "Password updated successfully."})
+    else:
+        return jsonify({"success": False, "error": "Failed to update password in database."}), 500
 
 RAILWAY_CLOUD_URL = "https://sunbuilders-production.up.railway.app"
 
