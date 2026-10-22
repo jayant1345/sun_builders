@@ -1565,12 +1565,12 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             let data = null;
             const vProjSelect = document.getElementById('select-voucher-project');
-            const targetProjCode = (vProjSelect && vProjSelect.value && vProjSelect.value !== '010010') ? vProjSelect.value : null;
+            const targetProjCode = (vProjSelect && vProjSelect.value) ? vProjSelect.value : null;
 
             // On Railway Cloud, the browser can't call a PC's localhost directly (Chrome
             // blocks an HTTPS page silently calling plain HTTP localhost). Instead, queue
-            // the request on the cloud and let the local agent (python server.py running
-            // on the PC where Tally is open) pick it up and report back.
+            // the request on the cloud and let the local agent (Start_Tally_Agent.bat)
+            // pick it up, extract live Tally data, and stream real-time progress.
             if (window.location.hostname.includes('railway.app')) {
                 addModalLog("Railway Cloud session detected. Queuing sync request for your local Tally agent...", "INFO");
                 try {
@@ -1581,16 +1581,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     const reqData = await reqResp.json();
                     const requestId = reqData.request_id;
-                    addModalLog(`Request queued. Waiting for your local Tally agent to pick it up (make sure "Start_Tally_Agent.bat" is running on the Tally PC)...`, "INFO");
+                    addModalLog(`Request queued (ID: ${requestId.slice(0, 8)}...). Waiting for your local Tally agent to pick it up...`, "INFO");
 
-                    const maxAttempts = 150; // ~10 minutes at 4s intervals
+                    let lastProgressMsg = "";
+                    const maxAttempts = 150; // ~6-10 minutes at 2.5s intervals
                     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-                        await new Promise(r => setTimeout(r, 4000));
+                        await new Promise(r => setTimeout(r, 2500));
                         const pollResp = await fetch(`/api/tally/sync_result/${requestId}`);
                         const pollData = await pollResp.json();
+
+                        if (pollData.progress) {
+                            const prog = pollData.progress;
+                            setModalPipelineStage(prog.step || 3, prog.message || "Streaming Daybook...", prog.percent || 30);
+                            if (prog.log && prog.log !== lastProgressMsg) {
+                                addModalLog(prog.log, "INFO");
+                                lastProgressMsg = prog.log;
+                            }
+                        }
+
                         if (pollData.status === 'done') {
                             data = pollData.result;
-                            addModalLog("Local agent responded with live Tally data!", "SUCCESS");
+                            setModalPipelineStage(4, `Ingestion Complete (${data.count || 0} Vouchers)`, 100);
+                            addModalLog(`Local agent responded: ${data.message || '100% vouchers synchronized to cloud'}`, "SUCCESS");
                             break;
                         }
                     }
@@ -1599,7 +1611,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             status: 'offline',
                             connected: false,
                             is_cloud: true,
-                            message: 'No response from your local Sun Builders app within 10 minutes. Make sure "python server.py" is running on the PC where Tally is open, and that PC has internet access.',
+                            message: 'No response from your local Sun Builders app within 10 minutes. Make sure "Start_Tally_Agent.bat" is running on the PC where Tally is open, and that PC has internet access.',
                             company: null,
                             count: 0,
                             vouchers: []

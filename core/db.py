@@ -500,6 +500,8 @@ class DatabaseManager:
         updated = 0
         unchanged = 0
         periods_seen = set()
+        to_update = []
+        to_insert = []
 
         try:
             with self.get_connection() as conn:
@@ -570,60 +572,75 @@ class DatabaseManager:
                         # Check if any financial or master value changed in Tally
                         if abs(old_record["amount"] - amt) > 0.01 or old_record["party"] != party or old_record["classification"] != cls:
                             if self.is_postgres:
-                                cur.execute("""
-                                    UPDATE vouchers SET
-                                        party_name = %s, party_original = %s, block_no = %s, unit_no = %s,
-                                        amount = %s, classification = %s, gst_rate = %s, narration = %s,
-                                        is_exempt = %s, synced_at = CURRENT_TIMESTAMP
-                                    WHERE project_code = %s AND voucher_number = %s AND date = %s;
-                                """, (party, orig, blk, unit, amt, cls, rate, narr, exempt, project_code, v_num, v_date))
+                                to_update.append((party, orig, blk, unit, amt, cls, rate, narr, exempt, project_code, v_num, v_date))
                             else:
-                                cur.execute("""
-                                    UPDATE vouchers SET
-                                        party_name = ?, party_original = ?, block_no = ?, unit_no = ?,
-                                        amount = ?, classification = ?, gst_rate = ?, narration = ?,
-                                        is_exempt = ?, synced_at = CURRENT_TIMESTAMP
-                                    WHERE project_code = ? AND voucher_number = ? AND date = ?;
-                                """, (party, orig, blk, unit, amt, cls, rate, narr, 1 if exempt else 0, project_code, v_num, v_date))
+                                to_update.append((party, orig, blk, unit, amt, cls, rate, narr, 1 if exempt else 0, project_code, v_num, v_date))
                             updated += 1
                         else:
                             unchanged += 1
                     else:
                         # Brand new voucher for this period
                         if self.is_postgres:
-                            cur.execute("""
-                                INSERT INTO vouchers (
-                                    project_code, voucher_number, date, party_name, party_original,
-                                    block_no, unit_no, amount, classification, gst_rate, narration, is_exempt
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (project_code, voucher_number, date, amount) DO UPDATE SET
-                                    party_name = EXCLUDED.party_name,
-                                    party_original = EXCLUDED.party_original,
-                                    block_no = EXCLUDED.block_no,
-                                    unit_no = EXCLUDED.unit_no,
-                                    classification = EXCLUDED.classification,
-                                    gst_rate = EXCLUDED.gst_rate,
-                                    narration = EXCLUDED.narration,
-                                    is_exempt = EXCLUDED.is_exempt;
-                            """, (project_code, v_num, v_date, party, orig, blk, unit, amt, cls, rate, narr, exempt))
+                            to_insert.append((project_code, v_num, v_date, party, orig, blk, unit, amt, cls, rate, narr, exempt))
                         else:
-                            cur.execute("""
-                                INSERT INTO vouchers (
-                                    project_code, voucher_number, date, party_name, party_original,
-                                    block_no, unit_no, amount, classification, gst_rate, narration, is_exempt
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                ON CONFLICT (project_code, voucher_number, date, amount) DO UPDATE SET
-                                    party_name = excluded.party_name,
-                                    party_original = excluded.party_original,
-                                    block_no = excluded.block_no,
-                                    unit_no = excluded.unit_no,
-                                    classification = excluded.classification,
-                                    gst_rate = excluded.gst_rate,
-                                    narration = excluded.narration,
-                                    is_exempt = excluded.is_exempt;
-                            """, (project_code, v_num, v_date, party, orig, blk, unit, amt, cls, rate, narr, 1 if exempt else 0))
+                            to_insert.append((project_code, v_num, v_date, party, orig, blk, unit, amt, cls, rate, narr, 1 if exempt else 0))
                         inserted += 1
                         existing_map[key] = {"amount": amt, "party": party, "classification": cls}
+
+                # 3. Batch execute all updates and inserts for maximum throughput
+                if to_update:
+                    if self.is_postgres and PSYCOPG2_AVAILABLE:
+                        from psycopg2.extras import execute_batch
+                        execute_batch(cur, """
+                            UPDATE vouchers SET
+                                party_name = %s, party_original = %s, block_no = %s, unit_no = %s,
+                                amount = %s, classification = %s, gst_rate = %s, narration = %s,
+                                is_exempt = %s, synced_at = CURRENT_TIMESTAMP
+                            WHERE project_code = %s AND voucher_number = %s AND date = %s;
+                        """, to_update, page_size=1000)
+                    else:
+                        cur.executemany("""
+                            UPDATE vouchers SET
+                                party_name = ?, party_original = ?, block_no = ?, unit_no = ?,
+                                amount = ?, classification = ?, gst_rate = ?, narration = ?,
+                                is_exempt = ?, synced_at = CURRENT_TIMESTAMP
+                            WHERE project_code = ? AND voucher_number = ? AND date = ?;
+                        """, to_update)
+
+                if to_insert:
+                    if self.is_postgres and PSYCOPG2_AVAILABLE:
+                        from psycopg2.extras import execute_batch
+                        execute_batch(cur, """
+                            INSERT INTO vouchers (
+                                project_code, voucher_number, date, party_name, party_original,
+                                block_no, unit_no, amount, classification, gst_rate, narration, is_exempt
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (project_code, voucher_number, date, amount) DO UPDATE SET
+                                party_name = EXCLUDED.party_name,
+                                party_original = EXCLUDED.party_original,
+                                block_no = EXCLUDED.block_no,
+                                unit_no = EXCLUDED.unit_no,
+                                classification = EXCLUDED.classification,
+                                gst_rate = EXCLUDED.gst_rate,
+                                narration = EXCLUDED.narration,
+                                is_exempt = EXCLUDED.is_exempt;
+                        """, to_insert, page_size=1000)
+                    else:
+                        cur.executemany("""
+                            INSERT INTO vouchers (
+                                project_code, voucher_number, date, party_name, party_original,
+                                block_no, unit_no, amount, classification, gst_rate, narration, is_exempt
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (project_code, voucher_number, date, amount) DO UPDATE SET
+                                party_name = excluded.party_name,
+                                party_original = excluded.party_original,
+                                block_no = excluded.block_no,
+                                unit_no = excluded.unit_no,
+                                classification = excluded.classification,
+                                gst_rate = excluded.gst_rate,
+                                narration = excluded.narration,
+                                is_exempt = excluded.is_exempt;
+                        """, to_insert)
 
                 conn.commit()
                 print(f"[DatabaseManager] Incremental Sync for {project_code}: +{inserted} new, {updated} updated, {unchanged} unchanged (0 duplicates).")

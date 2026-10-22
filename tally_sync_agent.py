@@ -30,6 +30,8 @@ def clean_tally_xml(xml_str: str) -> str:
     s = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', xml_str)
     s = re.sub(r'&#(?:0?[0-8]|1[1-2]|1[4-9]|2[0-9]|3[0-1]);', '', s)
     s = re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', s)
+    # 4. Remove namespace prefix colons in tag names to prevent 'unbound prefix' ParseError (e.g. <UDF:X> -> <UDF_X>)
+    s = re.sub(r'<(/?[a-zA-Z0-9_\-]+):([a-zA-Z0-9_\-]+)', r'<\1_\2', s)
     return s
 
 def parse_unit_and_names(ledger_name: str):

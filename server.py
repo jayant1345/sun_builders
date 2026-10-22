@@ -313,6 +313,8 @@ PUBLIC_AUTH_PATHS = {
     # Automated Tally agent bridge routes for remote CA sync
     "/api/tally/poll_sync",
     "/api/tally/submit_sync_result",
+    "/api/tally/request_sync",
+    "/api/tally/report_progress",
     "/api/vouchers/sync",
 }
 
@@ -322,8 +324,8 @@ def enforce_authentication():
     if request.path.startswith("/static/") or request.path == "/favicon.ico":
         return None
 
-    # 2. Allow explicitly public routes
-    if request.path in PUBLIC_AUTH_PATHS:
+    # 2. Allow explicitly public routes & sync results
+    if request.path in PUBLIC_AUTH_PATHS or request.path.startswith("/api/tally/sync_result/"):
         return None
 
     # 3. Allow CORS preflight OPTIONS
@@ -932,12 +934,14 @@ def api_tally_sync_live():
 # --- Cloud <-> local sync bridge -------------------------------------------------
 # Lets the cloud dashboard trigger a real live Tally sync without the browser ever
 # calling localhost directly (which Chrome blocks from an HTTPS page). The browser
-# queues a request on the cloud; the local agent (started from __main__ below, only
-# when NOT running on Railway) polls for it, performs the sync, and reports back.
+# queues a request on the cloud; the local agent polls for it, performs the sync,
+# and reports real-time progress back to the dashboard.
+
+_sync_progress = {}
 
 @app.route("/api/tally/request_sync", methods=["POST"])
 def api_request_sync():
-    global _pending_sync_request, _last_sync_result
+    global _pending_sync_request, _last_sync_result, _sync_progress
     request_id = str(uuid.uuid4())
     req_body = request.get_json(silent=True) or {}
     target_project = req_body.get("project_code")
@@ -948,31 +952,65 @@ def api_request_sync():
             "target_project": target_project
         }
         _last_sync_result = None
+        _sync_progress[request_id] = {
+            "percent": 15,
+            "message": "Sync request queued. Local Tally bridge agent is picking it up...",
+            "log": "Request registered on cloud.",
+            "step": 1
+        }
     return jsonify({"request_id": request_id, "status": "queued", "target_project": target_project})
 
 @app.route("/api/tally/poll_sync", methods=["GET"])
 def api_poll_sync():
     """Called by the local agent to check whether the cloud has a sync request waiting."""
-    global _pending_sync_request
+    global _pending_sync_request, _sync_progress
     with _sync_bridge_lock:
         if _pending_sync_request:
             claimed = _pending_sync_request
             _pending_sync_request = None
+            req_id = claimed["id"]
+            if req_id in _sync_progress:
+                _sync_progress[req_id]["percent"] = 25
+                _sync_progress[req_id]["message"] = "Local bridge agent connected to Tally (Port 9000)..."
+                _sync_progress[req_id]["step"] = 2
             return jsonify({
                 "pending": True,
-                "request_id": claimed["id"],
+                "request_id": req_id,
                 "target_project": claimed.get("target_project")
             })
     return jsonify({"pending": False})
+
+@app.route("/api/tally/report_progress", methods=["POST"])
+def api_report_progress():
+    """Called by the bridge agent to update intermediate upload and extraction progress."""
+    global _sync_progress
+    data = request.get_json(silent=True) or {}
+    req_id = data.get("request_id")
+    if req_id:
+        with _sync_bridge_lock:
+            _sync_progress[req_id] = {
+                "percent": data.get("percent", 50),
+                "message": data.get("message", "Processing vouchers..."),
+                "log": data.get("log", ""),
+                "step": data.get("step", 3),
+                "count": data.get("count", 0),
+                "updated_at": datetime.now().isoformat()
+            }
+    return jsonify({"status": "ok"})
 
 @app.route("/api/tally/submit_sync_result", methods=["POST"])
 def api_submit_sync_result():
     """Called by the local agent once it has extracted live Tally data, to report the
     result back for the cloud page to pick up."""
-    global _last_sync_result
-    data = request.get_json() or {}
+    global _last_sync_result, _sync_progress
+    data = request.get_json(silent=True) or {}
+    req_id = data.get("request_id")
     with _sync_bridge_lock:
         _last_sync_result = data
+        if req_id and req_id in _sync_progress:
+            _sync_progress[req_id]["percent"] = 100
+            _sync_progress[req_id]["message"] = f"Complete! Synced {data.get('count', 0)} vouchers successfully."
+            _sync_progress[req_id]["step"] = 4
     
     log_activity(
         activity_type=ActivityType.TALLY_SYNC,
@@ -991,8 +1029,10 @@ def api_sync_result(request_id):
     """Called by the browser to poll for the result of a queued request."""
     with _sync_bridge_lock:
         if _last_sync_result and _last_sync_result.get("request_id") == request_id:
-            return jsonify({"status": "done", "result": _last_sync_result})
-    return jsonify({"status": "pending"})
+            prog = _sync_progress.get(request_id)
+            return jsonify({"status": "done", "result": _last_sync_result, "progress": prog})
+        prog = _sync_progress.get(request_id)
+        return jsonify({"status": "pending", "progress": prog})
 
 def _local_cloud_sync_agent():
     """
