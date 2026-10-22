@@ -531,6 +531,7 @@ class DatabaseManager:
                     unit = str(v.get("unit_no") or v.get("flat_no") or v.get("unit") or "").strip()
 
                     # If unit is empty or a bank name, inspect bank_cash for real member unit
+                    orig = str(v.get("party_original") or v.get("raw_name") or party).strip()
                     bc = str(v.get("bank_cash") or "").strip()
                     if (not unit or any(b in unit.upper() for b in ["HDFC", "AXIS", "ICICI", "BANK"])) and bc:
                         u_bc, name_bc = _parse_unit_and_name(bc)
