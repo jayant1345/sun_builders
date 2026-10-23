@@ -2,10 +2,16 @@ import re
 from datetime import datetime
 
 CREDITOR_KEYWORDS = [
+    # True vendors/contractors/suppliers/banks - no connection to any member's unit, never
+    # shown on a member's row in the output sheet. Deliberately does NOT include stamp
+    # duty/registration fee/refundable deposit/electricity-exp keywords any more - those are
+    # non-GST amounts a MEMBER paid through their own unit's ledger (see classify_pass_through_type
+    # below), and belong in that member's row (in their own Receipt/Payment column), not dropped
+    # entirely. Conflating the two was the bug CA flagged: "advance receipts have been recorded,
+    # but the software is not fetching these receipts correctly" - stamp duty/reg fee vouchers
+    # tied to a real unit were being silently excluded instead of routed to their own column.
     r'\bcreditor\b', r'\bvendor\b', r'\bsupplier\b', r'\bcontractor\b', r'\bsubcontractor\b',
-    r'\bpurchase\b', r'\bmaterial\b', r'\belectric\b', r'\belectricity\b', r'\bcable\b', r'\bnotary\b',
-    r'\bstamp duty\b', r'\bregistration\b', r'\breg fee\b', r'\bsale deed\b', r'\bsales deed\b', r'\bats\b',
-    r'\bmaintenance\b', r'\bmaintanance\b', r'\bauda\b', r'\baec\b', r'\btorrent\b',
+    r'\bpurchase\b', r'\bmaterial\b', r'\bcable\b', r'\bnotary\b', r'\bsale deed\b', r'\bsales deed\b', r'\bats\b',
     r'\bconsultant\b', r'\bprofessional fee\b', r'\blegal fee\b', r'\baudit fee\b', r'\bbank charges\b',
     r'\bcourier\b', r'\bprinting\b', r'\bstationery\b', r'\bfreight\b', r'\btransport\b', r'\broadlines\b', r'\blogistics\b',
     r'\blabour\b', r'\blabor\b', r'\bcement\b', r'\bsteel\b', r'\bsand supplier\b', r'\bbricks\b', r'\btiles\b', r'\bplumbing\b', r'\bsanitary\b',
@@ -13,24 +19,153 @@ CREDITOR_KEYWORDS = [
     r'\bcorporation\b', r'\benterprises\b', r'\btraders\b', r'\bbuildcon\b', r'\binfra\b', r'\bagency\b', r'\bagencies\b',
     r'\bgas\b', r'\bgujarat gas\b', r'\bhardware\b', r'\bplywood\b', r'\bglass\b', r'\baluminium\b', r'\baluminum\b', r'\biron\b',
     r'\br\.m\.c\b', r'\brmc\b', r'\breadymix\b', r'\bconcrete\b', r'\bearthmovers\b', r'\bexcavation\b', r'\bcrane\b', r'\bbank coll\b',
-    r'\baxis bank\b', r'\bicici bank\b', r'\bhdfc bank\b', r'\bsbi\b'
+    r'\baxis bank\b', r'\bicici bank\b', r'\bhdfc bank\b', r'\bsbi\b',
+    # "M/s" (Messrs.) is a business-entity prefix - a flat/shop owner is never addressed this way,
+    # only a registered firm. Backstops the creditor check for any vendor whose ledger name
+    # happens to parse out a digit-containing fragment that looks like a flat code (e.g. a
+    # supplier ledger swept into income because of a coincidental match in the unit-code regex).
+    # NOTE: deliberately no bare '\bllp\b' keyword - the company's own name ("Sun Builders
+    # Projects LLP") appears naturally in bank transfer narrations (e.g. NEFT/RTGS reference
+    # text), which would wrongly flag genuine member payments as creditor entries. Confirmed
+    # on real data: this exact pattern hit unit C-901's real payments.
+    r'\bm/s\.?\b', r'\btimber\b', r'\bmart\b', r'\bstores?\b', r'\bsupply\b', r'\bindustries\b',
+    r'\bworks contract\b', r'\bdepot\b', r'\bwholesale\b', r'\bdistributors?\b', r'\bimpex\b',
+    r'\bpvt\.?\s*ltd\.?\b',
 ]
 
+# Non-GST amounts collected THROUGH a member's own unit ledger (the CA's 5-category exclusion
+# list) - these stay tied to that member's row in the output sheet (their own Receipt/Payment
+# column) rather than being dropped, but are excluded from the taxable base. Order matters:
+# checked top-to-bottom, first match wins, since e.g. a stamp-duty narration might also contain
+# "registration" in the same line.
+PASS_THROUGH_KEYWORDS = [
+    ("stamp_duty", [
+        r'\bstamp duty\b', r'\bstamp\b', r'\bstampduty\b', r'\bfrank(?:ing)?\b'
+    ]),
+    ("reg_fee", [
+        r'\bregistration\b', r'\breg(?:n|istration)?\.?\s*fee\b', r'\breg\b'
+    ]),
+    ("refundable_deposit", [
+        r'\brefund', r'\bsecurity deposit\b', r'\bmember deposit\b', r'\bcaution deposit\b'
+    ]),
+    ("electricity_exp", [
+        r'\belectric\b', r'\belectricity\b', r'\blight bill\b', r'\bauda\b', r'\baec\b', r'\btorrent\b',
+        r'\bpgvcl\b', r'\bgeb\b', r'\bugvcl\b', r'\bdgvcl\b', r'\bmgvcl\b', r'\bpower deposit\b',
+        r'\belectric deposit\b', r'\bmeter deposit\b', r'\btransformer\b'
+    ]),
+    ("maintenance_deposit", [
+        r'\bmaintenance\b', r'\bmaintanance\b', r'\bsociety\b', r'\bsociety deposit\b',
+        r'\bsociety maintenance\b', r'\bsociety maintanance\b', r'\bsociety fund\b',
+        r'\bsinking fund\b', r'\badhoc\b'
+    ]),
+]
+
+def is_valid_unit_code(unit_str: str) -> bool:
+    """Returns True ONLY if unit_str is an authentic real estate block/unit/flat code.
+    Rejects person names (Sonal, Hemil, Subhash), banks, deposits, expenses, and words without digits."""
+    if not unit_str:
+        return False
+    u = str(unit_str).strip().upper()
+    if u in ("", "—", "-", "N/A", "UNIT N/A", "UNDEFINED", "NONE", "NULL"):
+        return False
+    # A real flat/unit code in Sun Builders portfolio ALWAYS contains digits
+    if not re.search(r'\d', u):
+        return False
+    # Disallow common words that accidentally got attached
+    blacklisted = [
+        "BANK", "HDFC", "AXIS", "ICICI", "SBI", "CASH", "DEPOSIT", "AUDA", "PGVCL",
+        "GEB", "EXPENSE", "PURCHASE", "CHEQUE", "RETURN", "BROKERAGE", "COMMISSION",
+        "SOCIETY", "KASAR", "DISCOUNT", "ROUND"
+    ]
+    if any(b in u for b in blacklisted):
+        return False
+    patterns = [
+        r'^[A-Z]{1,2}[\-_/\s]?\d{1,5}[A-Z]?$',
+        r'^(?:SHOP|SH|OFF|OFFICE|PLOT|FLAT|UNIT)[\-_/\s]?\d{1,5}[A-Z]?$',
+        r'^\d{1,5}[A-Z]?$'
+    ]
+    return any(re.match(p, u) for p in patterns)
+
+# Pre-compiled high-performance classification regexes
+CREDITOR_RE = re.compile(r'|'.join(f'(?:{k})' for k in CREDITOR_KEYWORDS), re.IGNORECASE)
+PASS_THROUGH_COMPILED = [
+    (category, re.compile(r'|'.join(f'(?:{p})' for p in patterns), re.IGNORECASE))
+    for category, patterns in PASS_THROUGH_KEYWORDS
+]
+
+def classify_pass_through_type(party_str: str, raw_name: str = "", narr: str = ""):
+    """Returns the non-GST pass-through category ('stamp_duty', 'reg_fee',
+    'refundable_deposit', 'electricity_exp', 'maintenance_deposit') this voucher matches, or
+    None. Pre-compiled for high performance across tens of thousands of vouchers."""
+    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}"
+    for category, pattern_re in PASS_THROUGH_COMPILED:
+        if pattern_re.search(combined):
+            return category
+    return None
+
 def is_creditor_party(party_str: str, raw_name: str = "", narr: str = "") -> bool:
-    """Returns True if party name or narration indicates a vendor/creditor/contractor."""
-    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
-    for kw in CREDITOR_KEYWORDS:
-        if re.search(kw, combined):
-            return True
-    return False
+    """Returns True if party name or narration indicates a true vendor/creditor/contractor.
+    Utilizes single pre-compiled combined regex for near-instant execution."""
+    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}"
+    return bool(CREDITOR_RE.search(combined))
+
+AFTER_BU_RE = re.compile(r'(?:after|aftr|aft|af)\s*[\-_]?\s*bu\b', re.IGNORECASE)
 
 def is_after_bu_member(party_str: str, raw_name: str = "", narr: str = "") -> bool:
     """
-    Returns True if member ledger/narration contains 'After BU' or variations ('Af Bu', 'Afterbu'),
-    indicating flat purchased after BU permission (Schedule III Entry 5 - 0% GST).
+    Returns True if member ledger/narration contains 'After BU' or variations ('Af Bu', 'Aft Bu',
+    'Aftr Bu', 'Afterbu'), indicating flat purchased after BU permission (Schedule III Entry 5 - 0% GST).
     """
+    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}"
+    return bool(AFTER_BU_RE.search(combined) or 'afterbu' in combined.lower())
+
+def is_cancelled_booking(party_str: str, raw_name: str = "", narr: str = "") -> bool:
+    """Returns True if the party name or narration indicates a booking that was cancelled/voided
+    and refunded - e.g. a party name suffixed '-CANCELLED', or a refund voucher's narration
+    mentioning 'cancellation'/'cancelleation' (a common misspelling seen in this data) even when
+    the party name itself carries no CANCELLED tag. A fallen-through booking was never genuine
+    sale consideration and must not be taxed as income."""
     combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
-    return bool(re.search(r'(?:after|aft|af)\s*[\-_]?\s*bu\b', combined) or 'afterbu' in combined)
+    return 'cancel' in combined
+
+def is_plausible_receipt_amount(amount: float, min_amount: float = 100.0, max_amount: float = 10000000.0) -> bool:
+    """Sanity-checks a single voucher amount as a genuine flat/shop owner installment or full
+    payment. Real per-voucher owner receipts in this data range from a few hundred rupees up to
+    roughly the price of one unit; amounts below min_amount are data-entry artifacts (e.g. Rs.1,
+    Rs.4 placeholder rows) and amounts above max_amount (default Rs.1 Crore - well above this
+    project's own 'Affordable Residential <= Rs.45L' threshold, with headroom for a full-cash
+    higher-value unit) are not a plausible single owner payment and are far more likely to be a
+    non-receipt entry (e.g. a sale-deed/agreement value booked as a journal entry) swept in because
+    Tally's VOUCHERTYPENAME isn't filtered. Such amounts are excluded from taxable income and
+    flagged for manual CA review rather than being silently taxed or silently dropped."""
+    return min_amount <= amount <= max_amount
+
+def parse_voucher_date(date_str):
+    """Parses a voucher date stored as 'DD-MM-YYYY' (this app's live-sync format)."""
+    try:
+        return datetime.strptime(str(date_str or "").strip(), "%d-%m-%Y")
+    except Exception:
+        return None
+
+def is_voucher_after_bu_date(voucher_date_str: str, has_bu: bool, bu_permission_date_str: str) -> bool:
+    """Tests whether a given voucher date falls after the project's BU permission date.
+    bu_permission_date_str is expected as 'YYYY-MM-DD' (as stored in project config);
+    voucher_date_str is 'DD-MM-YYYY'. Returns False if the project has no BU yet, or either
+    date fails to parse (never silently exempts on bad data). Callers should generally pass
+    a UNIT's earliest payment date here (see compute_unit_bu_status in server.py), not an
+    individual installment's own date - Schedule III Entry 5 exemption depends on whether
+    the unit's sale agreement predates BU, not on when each later installment happens to
+    be paid."""
+    if not has_bu or not bu_permission_date_str:
+        return False
+    v_dt = parse_voucher_date(voucher_date_str)
+    if not v_dt:
+        return False
+    try:
+        bu_dt = datetime.strptime(str(bu_permission_date_str).strip(), "%Y-%m-%d")
+    except Exception:
+        return False
+    return v_dt > bu_dt
 
 def calculate_inclusive_tax(amount: float, rate: float = 0.01) -> dict:
     """

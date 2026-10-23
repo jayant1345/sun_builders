@@ -86,38 +86,38 @@ def is_valid_unit_code(unit_str: str) -> bool:
     ]
     return any(re.match(p, u) for p in patterns)
 
+# Pre-compiled high-performance classification regexes
+CREDITOR_RE = re.compile(r'|'.join(f'(?:{k})' for k in CREDITOR_KEYWORDS), re.IGNORECASE)
+PASS_THROUGH_COMPILED = [
+    (category, re.compile(r'|'.join(f'(?:{p})' for p in patterns), re.IGNORECASE))
+    for category, patterns in PASS_THROUGH_KEYWORDS
+]
+
 def classify_pass_through_type(party_str: str, raw_name: str = "", narr: str = ""):
     """Returns the non-GST pass-through category ('stamp_duty', 'reg_fee',
     'refundable_deposit', 'electricity_exp', 'maintenance_deposit') this voucher matches, or
-    None. Only meaningful for a voucher already confirmed tied to a real unit (has_unit) -
-    the caller is responsible for that check; this function only looks at keywords."""
-    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
-    for category, patterns in PASS_THROUGH_KEYWORDS:
-        if any(re.search(p, combined) for p in patterns):
+    None. Pre-compiled for high performance across tens of thousands of vouchers."""
+    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}"
+    for category, pattern_re in PASS_THROUGH_COMPILED:
+        if pattern_re.search(combined):
             return category
     return None
 
 def is_creditor_party(party_str: str, raw_name: str = "", narr: str = "") -> bool:
-    """Returns True if party name or narration indicates a true vendor/creditor/contractor -
-    i.e. not connected to any member's unit. Non-GST pass-through amounts a member paid
-    through their own ledger (stamp duty, registration fee, etc.) are handled separately by
-    classify_pass_through_type, not here."""
-    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
-    for kw in CREDITOR_KEYWORDS:
-        if re.search(kw, combined):
-            return True
-    return False
+    """Returns True if party name or narration indicates a true vendor/creditor/contractor.
+    Utilizes single pre-compiled combined regex for near-instant execution."""
+    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}"
+    return bool(CREDITOR_RE.search(combined))
+
+AFTER_BU_RE = re.compile(r'(?:after|aftr|aft|af)\s*[\-_]?\s*bu\b', re.IGNORECASE)
 
 def is_after_bu_member(party_str: str, raw_name: str = "", narr: str = "") -> bool:
     """
     Returns True if member ledger/narration contains 'After BU' or variations ('Af Bu', 'Aft Bu',
     'Aftr Bu', 'Afterbu'), indicating flat purchased after BU permission (Schedule III Entry 5 - 0% GST).
-    This is a text-based backup signal only - the authoritative test is the voucher's own date vs.
-    the project's BU permission date (see is_post_bu below), since not every post-BU ledger was
-    manually tagged, and spelling varies ('Aftr Bu' typo, etc).
     """
-    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}".lower()
-    return bool(re.search(r'(?:after|aftr|aft|af)\s*[\-_]?\s*bu\b', combined) or 'afterbu' in combined)
+    combined = f"{party_str or ''} {raw_name or ''} {narr or ''}"
+    return bool(AFTER_BU_RE.search(combined) or 'afterbu' in combined.lower())
 
 def is_cancelled_booking(party_str: str, raw_name: str = "", narr: str = "") -> bool:
     """Returns True if the party name or narration indicates a booking that was cancelled/voided

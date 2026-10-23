@@ -2,41 +2,61 @@ import os
 import re
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 
+from core.gst_rules import is_valid_unit_code
+
 def _parse_unit_and_name(raw_text):
     """Splits a raw Tally ledger name into (flat/unit code, owner name(s)).
-    Stops the flat-code capture right after the unit digits, so a ledger like
-    'I-803-Neetaben Trivedi - After BU' (multiple owners glued with a hyphen,
-    no comma) correctly yields unit='I-803' and name='Neetaben Trivedi - After BU'
-    instead of swallowing the first owner's name into the flat code.
+    Enforces authentic block/unit codes (A-101, SHOP-118, O-1401).
+    Rejects names (Sonal, Hemil, Subhash), banks, and words without digits.
     """
     if not raw_text:
         return "", ""
     raw = str(raw_text).replace('_x000D_\n', ' ').replace('_x000D_', ' ').strip()
 
-    m = re.match(r'^([A-Za-z]{1,4})\s*[\-_/,\s]\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
+    # Pattern 1: Explicit Shop / Office / Plot / Flat prefix: e.g. 'Shop 118 Amit Bhavsar', 'SH-403 Nehal Parikh'
+    m_pref = re.match(r'^(SHOP|SH|OFF|OFFICE|PLOT|FLAT|UNIT)\s*[\-_/,\s]?\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw, re.IGNORECASE)
+    if m_pref:
+        pref = m_pref.group(1).upper()
+        if pref in ["SH", "SHOP"]:
+            unit = f"SHOP-{m_pref.group(2)}"
+        elif pref in ["OFF", "OFFICE"]:
+            unit = f"OFF-{m_pref.group(2)}"
+        elif pref == "PLOT":
+            unit = f"PLOT-{m_pref.group(2)}"
+        else:
+            unit = f"{pref}-{m_pref.group(2)}"
+        rest_name = re.sub(r'^[,;.:\-\s]+', '', m_pref.group(3).strip()).strip()
+        rest_name = re.sub(r'\s+', ' ', rest_name)
+        return unit, rest_name if rest_name else "Member"
+
+    # Pattern 2: Single or 2-letter Tower/Block + Flat digits: e.g. 'A-101', 'O-1401', 'I/1403', 'K-603'
+    # Towers in real estate are 1-2 letters (A, B, C, ... AA, etc.), NOT names like 'Sonal' (5 letters)!
+    m = re.match(r'^([A-Za-z]{1,2})\s*[\-_/,\s]\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
     if m:
         unit = f"{m.group(1).upper()}-{m.group(2)}"
         rest_name = re.sub(r'^[,;.:\-\s]+', '', m.group(3).strip()).strip()
         rest_name = re.sub(r'\s+', ' ', rest_name)
-        return unit, rest_name
+        return unit, rest_name if rest_name else "Member"
 
-    m2 = re.match(r'^([A-Za-z]{1,4})(\d{2,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
+    # Pattern 3: Block + digits glued without separator: e.g. 'L1102,Sudhanshu Agarwal'
+    m2 = re.match(r'^([A-Za-z]{1,2})(\d{2,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
     if m2:
         unit = f"{m2.group(1).upper()}-{m2.group(2)}"
         rest_name = re.sub(r'^[,;.:\-\s]+', '', m2.group(3).strip()).strip()
         rest_name = re.sub(r'\s+', ' ', rest_name)
-        return unit, rest_name
+        return unit, rest_name if rest_name else "Member"
 
+    # Pattern 4: Fallback comma / semicolon / dash ONLY IF the first part is a valid unit code
     for sep in [',', ';', '-']:
         if sep in raw:
             p0, p1 = raw.split(sep, 1)
             p0, p1 = p0.strip(), p1.strip()
-            if len(p0) <= 8 and any(ch.isdigit() for ch in p0):
-                return p0, p1
+            if is_valid_unit_code(p0):
+                return p0, p1 if p1 else "Member"
 
     return "", raw
 
@@ -148,6 +168,33 @@ class DatabaseManager:
                         );
                     """)
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_unit_project ON units(project_code);")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS activity_logs (
+                            id SERIAL PRIMARY KEY,
+                            created_at VARCHAR(50) NOT NULL,
+                            timestamp_iso VARCHAR(50),
+                            activity_type VARCHAR(50) NOT NULL,
+                            action VARCHAR(100) NOT NULL,
+                            project_code VARCHAR(20),
+                            project_name VARCHAR(255),
+                            description TEXT NOT NULL,
+                            details TEXT,
+                            status VARCHAR(20) DEFAULT 'SUCCESS',
+                            ip_address VARCHAR(50),
+                            user_agent VARCHAR(255)
+                        );
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_created ON activity_logs(created_at);")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS users (
+                            id SERIAL PRIMARY KEY,
+                            username VARCHAR(100) UNIQUE NOT NULL,
+                            password_hash VARCHAR(255) NOT NULL,
+                            role VARCHAR(50) DEFAULT 'admin',
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            last_login TIMESTAMP
+                        );
+                    """)
                 else:
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS projects (
@@ -200,12 +247,43 @@ class DatabaseManager:
                         );
                     """)
                     cur.execute("CREATE INDEX IF NOT EXISTS idx_unit_project ON units(project_code);")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS activity_logs (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            created_at TEXT NOT NULL,
+                            timestamp_iso TEXT,
+                            activity_type TEXT NOT NULL,
+                            action TEXT NOT NULL,
+                            project_code TEXT,
+                            project_name TEXT,
+                            description TEXT NOT NULL,
+                            details TEXT,
+                            status TEXT DEFAULT 'SUCCESS',
+                            ip_address TEXT,
+                            user_agent TEXT
+                        );
+                    """)
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_created ON activity_logs(created_at);")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_type ON activity_logs(activity_type);")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_act_project ON activity_logs(project_code);")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS users (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT UNIQUE NOT NULL,
+                            password_hash TEXT NOT NULL,
+                            role TEXT DEFAULT 'admin',
+                            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                            last_login TEXT
+                        );
+                    """)
                 conn.commit()
                 print("[DatabaseManager] Schema verified successfully.")
+                self.seed_admin_user()
         except Exception as e:
             print(f"[DatabaseManager] Schema init warning: {e}")
 
         self._migrate_voucher_override_columns()
+        self.clean_bogus_units_and_reclassify()
 
     def _migrate_voucher_override_columns(self):
         """Adds the CA manual-override columns to an already-existing vouchers table
@@ -233,6 +311,49 @@ class DatabaseManager:
                 conn.commit()
         except Exception as e:
             print(f"[DatabaseManager] Override column migration warning: {e}")
+
+    def clean_bogus_units_and_reclassify(self):
+        """Scans all vouchers in DB across all projects.
+        1. If unit_no is not a valid unit code (e.g. 'Sonal', 'Hemil', 'AXIS', or words without digits),
+           clears unit_no to '' and restores party_name from party_original.
+        2. Reclassifies AUDA, PGVCL, society deposits, electric deposits, maintenance deposits as non-income.
+        """
+        fixed = 0
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id, project_code, voucher_number, party_original, party_name, unit_no, narration FROM vouchers")
+                rows = cur.fetchall()
+                for r in rows:
+                    rid, pcode, vnum, orig, pname, uno, narr = r[0], r[1], r[2], r[3] or "", r[4] or "", r[5] or "", r[6] or ""
+                    uno_clean = uno.strip()
+                    needs_update = False
+                    new_uno = uno_clean
+                    new_pname = pname
+
+                    if uno_clean and not is_valid_unit_code(uno_clean):
+                        # Bogus unit (e.g. Sonal, Hemil, AXIS)
+                        cand_u, cand_name = _parse_unit_and_name(orig)
+                        if is_valid_unit_code(cand_u):
+                            new_uno = cand_u
+                            new_pname = cand_name or orig
+                        else:
+                            new_uno = ""
+                            new_pname = orig if orig else pname
+                        needs_update = True
+
+                    if needs_update:
+                        if self.is_postgres:
+                            cur.execute("UPDATE vouchers SET unit_no = %s, party_name = %s WHERE id = %s", (new_uno, new_pname, rid))
+                        else:
+                            cur.execute("UPDATE vouchers SET unit_no = ?, party_name = ? WHERE id = ?", (new_uno, new_pname, rid))
+                        fixed += 1
+                conn.commit()
+                if fixed:
+                    print(f"[DatabaseManager] clean_bogus_units: Sanitized {fixed} vouchers with invalid unit/block names.")
+        except Exception as e:
+            print(f"[DatabaseManager] clean_bogus_units error: {e}")
+        return fixed
 
     def seed_projects_from_file(self, config_path):
         """Seed project master data into database if empty."""
@@ -318,6 +439,21 @@ class DatabaseManager:
         except Exception as e:
             print(f"[DatabaseManager] Error upserting project {code}: {e}")
             return False
+
+    def delete_project(self, code):
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("DELETE FROM projects WHERE code = %s;", (code,))
+                else:
+                    cur.execute("DELETE FROM projects WHERE code = ?;", (code,))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"[DatabaseManager] Error deleting project {code}: {e}")
+            return False
+
 
     def save_units(self, project_code, units):
         """Upsert the unit/flat inventory master (block, size, usage - no owner/payment
@@ -428,6 +564,8 @@ class DatabaseManager:
         updated = 0
         unchanged = 0
         periods_seen = set()
+        to_update = []
+        to_insert = []
 
         try:
             with self.get_connection() as conn:
@@ -498,60 +636,75 @@ class DatabaseManager:
                         # Check if any financial or master value changed in Tally
                         if abs(old_record["amount"] - amt) > 0.01 or old_record["party"] != party or old_record["classification"] != cls:
                             if self.is_postgres:
-                                cur.execute("""
-                                    UPDATE vouchers SET
-                                        party_name = %s, party_original = %s, block_no = %s, unit_no = %s,
-                                        amount = %s, classification = %s, gst_rate = %s, narration = %s,
-                                        is_exempt = %s, synced_at = CURRENT_TIMESTAMP
-                                    WHERE project_code = %s AND voucher_number = %s AND date = %s;
-                                """, (party, orig, blk, unit, amt, cls, rate, narr, exempt, project_code, v_num, v_date))
+                                to_update.append((party, orig, blk, unit, amt, cls, rate, narr, exempt, project_code, v_num, v_date))
                             else:
-                                cur.execute("""
-                                    UPDATE vouchers SET
-                                        party_name = ?, party_original = ?, block_no = ?, unit_no = ?,
-                                        amount = ?, classification = ?, gst_rate = ?, narration = ?,
-                                        is_exempt = ?, synced_at = CURRENT_TIMESTAMP
-                                    WHERE project_code = ? AND voucher_number = ? AND date = ?;
-                                """, (party, orig, blk, unit, amt, cls, rate, narr, 1 if exempt else 0, project_code, v_num, v_date))
+                                to_update.append((party, orig, blk, unit, amt, cls, rate, narr, 1 if exempt else 0, project_code, v_num, v_date))
                             updated += 1
                         else:
                             unchanged += 1
                     else:
                         # Brand new voucher for this period
                         if self.is_postgres:
-                            cur.execute("""
-                                INSERT INTO vouchers (
-                                    project_code, voucher_number, date, party_name, party_original,
-                                    block_no, unit_no, amount, classification, gst_rate, narration, is_exempt
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (project_code, voucher_number, date, amount) DO UPDATE SET
-                                    party_name = EXCLUDED.party_name,
-                                    party_original = EXCLUDED.party_original,
-                                    block_no = EXCLUDED.block_no,
-                                    unit_no = EXCLUDED.unit_no,
-                                    classification = EXCLUDED.classification,
-                                    gst_rate = EXCLUDED.gst_rate,
-                                    narration = EXCLUDED.narration,
-                                    is_exempt = EXCLUDED.is_exempt;
-                            """, (project_code, v_num, v_date, party, orig, blk, unit, amt, cls, rate, narr, exempt))
+                            to_insert.append((project_code, v_num, v_date, party, orig, blk, unit, amt, cls, rate, narr, exempt))
                         else:
-                            cur.execute("""
-                                INSERT INTO vouchers (
-                                    project_code, voucher_number, date, party_name, party_original,
-                                    block_no, unit_no, amount, classification, gst_rate, narration, is_exempt
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                ON CONFLICT (project_code, voucher_number, date, amount) DO UPDATE SET
-                                    party_name = excluded.party_name,
-                                    party_original = excluded.party_original,
-                                    block_no = excluded.block_no,
-                                    unit_no = excluded.unit_no,
-                                    classification = excluded.classification,
-                                    gst_rate = excluded.gst_rate,
-                                    narration = excluded.narration,
-                                    is_exempt = excluded.is_exempt;
-                            """, (project_code, v_num, v_date, party, orig, blk, unit, amt, cls, rate, narr, 1 if exempt else 0))
+                            to_insert.append((project_code, v_num, v_date, party, orig, blk, unit, amt, cls, rate, narr, 1 if exempt else 0))
                         inserted += 1
                         existing_map[key] = {"amount": amt, "party": party, "classification": cls}
+
+                # 3. Batch execute all updates and inserts for maximum throughput
+                if to_update:
+                    if self.is_postgres and PSYCOPG2_AVAILABLE:
+                        from psycopg2.extras import execute_batch
+                        execute_batch(cur, """
+                            UPDATE vouchers SET
+                                party_name = %s, party_original = %s, block_no = %s, unit_no = %s,
+                                amount = %s, classification = %s, gst_rate = %s, narration = %s,
+                                is_exempt = %s, synced_at = CURRENT_TIMESTAMP
+                            WHERE project_code = %s AND voucher_number = %s AND date = %s;
+                        """, to_update, page_size=1000)
+                    else:
+                        cur.executemany("""
+                            UPDATE vouchers SET
+                                party_name = ?, party_original = ?, block_no = ?, unit_no = ?,
+                                amount = ?, classification = ?, gst_rate = ?, narration = ?,
+                                is_exempt = ?, synced_at = CURRENT_TIMESTAMP
+                            WHERE project_code = ? AND voucher_number = ? AND date = ?;
+                        """, to_update)
+
+                if to_insert:
+                    if self.is_postgres and PSYCOPG2_AVAILABLE:
+                        from psycopg2.extras import execute_batch
+                        execute_batch(cur, """
+                            INSERT INTO vouchers (
+                                project_code, voucher_number, date, party_name, party_original,
+                                block_no, unit_no, amount, classification, gst_rate, narration, is_exempt
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (project_code, voucher_number, date, amount) DO UPDATE SET
+                                party_name = EXCLUDED.party_name,
+                                party_original = EXCLUDED.party_original,
+                                block_no = EXCLUDED.block_no,
+                                unit_no = EXCLUDED.unit_no,
+                                classification = EXCLUDED.classification,
+                                gst_rate = EXCLUDED.gst_rate,
+                                narration = EXCLUDED.narration,
+                                is_exempt = EXCLUDED.is_exempt;
+                        """, to_insert, page_size=1000)
+                    else:
+                        cur.executemany("""
+                            INSERT INTO vouchers (
+                                project_code, voucher_number, date, party_name, party_original,
+                                block_no, unit_no, amount, classification, gst_rate, narration, is_exempt
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (project_code, voucher_number, date, amount) DO UPDATE SET
+                                party_name = excluded.party_name,
+                                party_original = excluded.party_original,
+                                block_no = excluded.block_no,
+                                unit_no = excluded.unit_no,
+                                classification = excluded.classification,
+                                gst_rate = excluded.gst_rate,
+                                narration = excluded.narration,
+                                is_exempt = excluded.is_exempt;
+                        """, to_insert)
 
                 conn.commit()
                 print(f"[DatabaseManager] Incremental Sync for {project_code}: +{inserted} new, {updated} updated, {unchanged} unchanged (0 duplicates).")
@@ -787,7 +940,235 @@ class DatabaseManager:
             print(f"[DatabaseManager] Purge error: {e}")
         return deleted_count
 
+    def insert_activity_log(self, activity_type, action, description, project_code=None, project_name=None, details=None, status="SUCCESS", ip_address=None, user_agent=None, created_at=None, timestamp_iso=None):
+        now = datetime.now()
+        if not created_at:
+            created_at = now.strftime("%Y-%m-%d %H:%M:%S")
+        if not timestamp_iso:
+            timestamp_iso = now.isoformat()
+        
+        details_str = json.dumps(details) if isinstance(details, (dict, list)) else (str(details) if details else None)
+        placeholder = "%s" if self.is_postgres else "?"
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(f"""
+                    INSERT INTO activity_logs (created_at, timestamp_iso, activity_type, action, project_code, project_name, description, details, status, ip_address, user_agent)
+                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+                """, (created_at, timestamp_iso, activity_type, action, project_code or "", project_name or "", description, details_str, status or "SUCCESS", ip_address or "", user_agent or ""))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"[DatabaseManager] Activity log insert error: {e}")
+            return False
+
+    def get_activity_logs(self, project_code=None, activity_type=None, status=None, search=None, limit=100, offset=0):
+        placeholder = "%s" if self.is_postgres else "?"
+        clauses = []
+        params = []
+        if project_code and project_code != "ALL":
+            clauses.append(f"project_code = {placeholder}")
+            params.append(project_code)
+        if activity_type and activity_type != "ALL":
+            clauses.append(f"activity_type = {placeholder}")
+            params.append(activity_type)
+        if status and status != "ALL":
+            clauses.append(f"status = {placeholder}")
+            params.append(status)
+        if search:
+            search_pattern = f"%{search.strip()}%"
+            clauses.append(f"(description LIKE {placeholder} OR action LIKE {placeholder} OR project_name LIKE {placeholder} OR details LIKE {placeholder})")
+            params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+
+        where_clause = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+        count_sql = f"SELECT COUNT(*) FROM activity_logs {where_clause}"
+        data_sql = f"SELECT id, created_at, timestamp_iso, activity_type, action, project_code, project_name, description, details, status, ip_address, user_agent FROM activity_logs {where_clause} ORDER BY id DESC LIMIT {int(limit)} OFFSET {int(offset)}"
+
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(count_sql, tuple(params))
+                total = cur.fetchone()[0]
+
+                cur.execute(data_sql, tuple(params))
+                rows = cur.fetchall()
+                logs = []
+                for r in rows:
+                    if self.is_postgres:
+                        row_dict = {
+                            "id": r[0], "created_at": r[1], "timestamp_iso": r[2], "activity_type": r[3],
+                            "action": r[4], "project_code": r[5], "project_name": r[6], "description": r[7],
+                            "details": r[8], "status": r[9], "ip_address": r[10], "user_agent": r[11]
+                        }
+                    else:
+                        row_dict = dict(r)
+
+                    # Ensure timestamps from PostgreSQL (previously saved in UTC) are normalized to Indian Standard Time (IST)
+                    c_at = row_dict.get("created_at")
+                    ts_iso = row_dict.get("timestamp_iso")
+                    if self.is_postgres and ts_iso and ("+05:30" not in str(ts_iso) and "+0530" not in str(ts_iso)):
+                        try:
+                            clean_iso = str(ts_iso).split("+")[0].replace("Z", "")
+                            dt_val = datetime.fromisoformat(clean_iso) + timedelta(hours=5, minutes=30)
+                            row_dict["created_at"] = dt_val.strftime("%Y-%m-%d %H:%M:%S")
+                            row_dict["timestamp_iso"] = dt_val.strftime("%Y-%m-%dT%H:%M:%S+05:30")
+                        except Exception:
+                            pass
+
+                    det = row_dict.get("details")
+                    if det:
+                        try:
+                            row_dict["details_parsed"] = json.loads(det)
+                        except Exception:
+                            row_dict["details_parsed"] = None
+                    logs.append(row_dict)
+                return {"total": total, "logs": logs}
+        except Exception as e:
+            print(f"[DatabaseManager] Activity log query error: {e}")
+            return {"total": 0, "logs": []}
+
+    def get_activity_stats(self):
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM activity_logs")
+                total = cur.fetchone()[0]
+
+                cur.execute("SELECT activity_type, COUNT(*) FROM activity_logs GROUP BY activity_type")
+                by_type = {r[0]: r[1] for r in cur.fetchall()}
+
+                cur.execute("SELECT status, COUNT(*) FROM activity_logs GROUP BY status")
+                by_status = {r[0]: r[1] for r in cur.fetchall()}
+
+                cur.execute("SELECT created_at, timestamp_iso FROM activity_logs ORDER BY id DESC LIMIT 1")
+                last_row = cur.fetchone()
+                last_active = None
+                last_active_iso = None
+                if last_row:
+                    last_active = last_row[0]
+                    last_active_iso = last_row[1] if len(last_row) > 1 else None
+                    if self.is_postgres and last_active_iso and ("+05:30" not in str(last_active_iso) and "+0530" not in str(last_active_iso)):
+                        try:
+                            clean_iso = str(last_active_iso).split("+")[0].replace("Z", "")
+                            dt_val = datetime.fromisoformat(clean_iso) + timedelta(hours=5, minutes=30)
+                            last_active = dt_val.strftime("%Y-%m-%d %H:%M:%S")
+                            last_active_iso = dt_val.strftime("%Y-%m-%dT%H:%M:%S+05:30")
+                        except Exception:
+                            pass
+
+                return {
+                    "total": total,
+                    "by_type": by_type,
+                    "by_status": by_status,
+                    "last_active": last_active,
+                    "last_active_iso": last_active_iso
+                }
+        except Exception as e:
+            print(f"[DatabaseManager] Activity stats error: {e}")
+            return {"total": 0, "by_type": {}, "by_status": {}, "last_active": None}
+
+    def seed_admin_user(self):
+        """Ensure default admin user exists with password 'admin'."""
+        try:
+            from werkzeug.security import generate_password_hash
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("SELECT id FROM users WHERE username = %s;", ('admin',))
+                    if not cur.fetchone():
+                        p_hash = generate_password_hash("admin")
+                        cur.execute(
+                            "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s);",
+                            ('admin', p_hash, 'admin')
+                        )
+                        conn.commit()
+                        print("[DatabaseManager] Default admin user initialized (username: admin, password: admin).")
+                else:
+                    cur.execute("SELECT id FROM users WHERE username = ?;", ('admin',))
+                    if not cur.fetchone():
+                        p_hash = generate_password_hash("admin")
+                        cur.execute(
+                            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?);",
+                            ('admin', p_hash, 'admin')
+                        )
+                        conn.commit()
+                        print("[DatabaseManager] Default admin user initialized (username: admin, password: admin).")
+        except Exception as e:
+            print(f"[DatabaseManager] Seed admin user warning: {e}")
+
+    def get_user(self, username):
+        """Retrieve user record by username."""
+        if not username:
+            return None
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("SELECT id, username, password_hash, role, created_at, last_login FROM users WHERE username = %s;", (username.strip(),))
+                    row = cur.fetchone()
+                    if row:
+                        if hasattr(cur, 'description') and cur.description:
+                            cols = [d[0] for d in cur.description]
+                            return dict(zip(cols, row))
+                        return dict(row)
+                else:
+                    cur.execute("SELECT id, username, password_hash, role, created_at, last_login FROM users WHERE username = ?;", (username.strip(),))
+                    row = cur.fetchone()
+                    if row:
+                        return dict(row)
+        except Exception as e:
+            print(f"[DatabaseManager] get_user error: {e}")
+        return None
+
+    def verify_user(self, username, password):
+        """Verify username and password against database."""
+        from werkzeug.security import check_password_hash
+        user = self.get_user(username)
+        if not user:
+            return None
+        if check_password_hash(user["password_hash"], str(password or "")):
+            self.update_last_login(username)
+            return {
+                "id": user["id"],
+                "username": user["username"],
+                "role": user.get("role", "admin")
+            }
+        return None
+
+    def update_last_login(self, username):
+        """Update last login timestamp for user."""
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE username = %s;", (username,))
+                else:
+                    cur.execute("UPDATE users SET last_login = ? WHERE username = ?;", (now_str, username))
+                conn.commit()
+        except Exception as e:
+            print(f"[DatabaseManager] update_last_login error: {e}")
+
+    def update_password(self, username, new_password):
+        """Update user password with salted hash."""
+        from werkzeug.security import generate_password_hash
+        p_hash = generate_password_hash(new_password)
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                if self.is_postgres:
+                    cur.execute("UPDATE users SET password_hash = %s WHERE username = %s;", (p_hash, username))
+                else:
+                    cur.execute("UPDATE users SET password_hash = ? WHERE username = ?;", (p_hash, username))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"[DatabaseManager] update_password error: {e}")
+            return False
+
 
 # Singleton instance
 db = DatabaseManager()
+
 

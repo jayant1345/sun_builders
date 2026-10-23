@@ -197,11 +197,18 @@ function switchTab(tabId) {
     }
 
     const vSel = document.getElementById('select-voucher-project');
-    loadRealVouchers(vSel ? vSel.value : '010010');
+    const activeCode = localStorage.getItem('sun_active_project') || (vSel ? vSel.value : '010010');
+    if (!vouchersLoaded || currentVoucherCompanyCode !== activeCode) {
+        if (window.setActiveProject) {
+            window.setActiveProject(activeCode);
+        } else {
+            loadRealVouchers(activeCode);
+        }
+    }
 
     if (tabId === 'units') {
         const uSel = document.getElementById('select-units-project');
-        loadUnits(uSel ? uSel.value : '010000');
+        loadUnits(uSel ? uSel.value : activeCode);
     }
 
     if (tabId === 'audit') {
@@ -429,14 +436,112 @@ function updateVoucherCategoryButtons() {
     });
 }
 
-async function loadRealVouchers(projectKey, month, year) {
+let activeVoucherAbortController = null;
+let activeVoucherReqId = 0;
+
+function showVoucherLoadingSpinner(targetKey) {
+    const tbody = document.getElementById('voucher-table-body');
+    const pageTotal = document.getElementById('vch-page-total');
+    const paginationControls = document.getElementById('voucher-pagination-controls');
+    
+    // Determine friendly project name
+    const vSel = document.getElementById('select-voucher-project') || document.getElementById('select-header-project');
+    let projName = `Project ${targetKey}`;
+    if (vSel) {
+        const opt = vSel.querySelector(`option[value="${targetKey}"]`);
+        if (opt) {
+            projName = opt.textContent.replace(/^[🏢\s]+/, '').split('—')[0].trim();
+        }
+    }
+
+    if (pageTotal) pageTotal.textContent = '...';
+    if (paginationControls) paginationControls.innerHTML = '';
+
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="py-24 text-center bg-slate-50/70">
+                    <div class="flex flex-col items-center justify-center gap-3">
+                        <div class="relative flex items-center justify-center">
+                            <div class="w-12 h-12 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin shadow-sm"></div>
+                            <span class="material-symbols-outlined text-blue-600 text-lg absolute">apartment</span>
+                        </div>
+                        <div class="font-display font-extrabold text-sm text-slate-800">
+                            Loading ${escapeHtml(projName)}...
+                        </div>
+                        <div class="text-xs text-slate-500 font-medium max-w-md">
+                            Applying statutory BU cutoff dates, segregating non-GST pass-throughs, and recalculating live tax compliance
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+
+    // Immediately dim Overview cards & set skeleton indicators so user NEVER sees old project data
+    const overviewTitle = document.getElementById('overview-project-title');
+    const buDateElem = document.getElementById('overview-bu-date');
+    const exemptAmtElem = document.getElementById('overview-exempt-amount');
+    const exclAmtElem = document.getElementById('overview-exclusions-amount');
+    const unitsBadge = document.getElementById('overview-units-badge');
+    const badgeText = document.getElementById('overview-project-status-text');
+
+    if (overviewTitle) overviewTitle.textContent = `${projName} Compliance Rule`;
+    if (badgeText) badgeText.textContent = 'Updating...';
+    if (buDateElem) buDateElem.textContent = 'Verifying BU permission cutoff...';
+    if (exemptAmtElem) exemptAmtElem.textContent = '...';
+    if (exclAmtElem) exclAmtElem.textContent = '...';
+    if (unitsBadge) unitsBadge.textContent = 'Loading vouchers...';
+
+    // Dim cards
+    document.querySelectorAll('#tab-overview .glass-panel').forEach(panel => {
+        panel.classList.add('opacity-50', 'pointer-events-none', 'transition-opacity', 'duration-200');
+    });
+}
+
+window.setActiveProject = function(projectCode) {
+    if (!projectCode) return;
+    
+    // Save to localStorage for persistence across reloads/tabs
+    localStorage.setItem('sun_active_project', projectCode);
+
+    // Synchronize all dropdowns on page
+    ['select-header-project', 'select-voucher-project', 'select-units-project'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.value !== projectCode) {
+            el.value = projectCode;
+        }
+    });
+
+    // Abort previous request to prevent race conditions
+    if (activeVoucherAbortController) {
+        try { activeVoucherAbortController.abort(); } catch (e) {}
+    }
+    activeVoucherAbortController = new AbortController();
+    const reqId = ++activeVoucherReqId;
+
+    // Show instant progressing spinner and dim cards
+    showVoucherLoadingSpinner(projectCode);
+
+    // Load vouchers for target project
+    loadRealVouchers(projectCode, undefined, undefined, reqId, activeVoucherAbortController.signal);
+
+    // Also sync Units tab if available
+    if (typeof loadUnits === 'function') {
+        const uSel = document.getElementById('select-units-project');
+        if (uSel && uSel.value !== projectCode) uSel.value = projectCode;
+        loadUnits(projectCode);
+    }
+};
+
+async function loadRealVouchers(projectKey, month, year, reqId, abortSignal) {
     try {
         const vSel = document.getElementById('select-voucher-project');
         const hSel = document.getElementById('select-header-project');
         const mSel = document.getElementById('select-voucher-month');
         const ySel = document.getElementById('select-voucher-year');
 
-        const targetKey = projectKey || (vSel ? vSel.value : '010010');
+        const targetKey = projectKey || localStorage.getItem('sun_active_project') || (vSel ? vSel.value : '010010');
         const targetMonth = month !== undefined ? month : (mSel ? mSel.value : 'ALL');
         const targetYear = year !== undefined ? year : (ySel ? ySel.value : 'ALL');
         
@@ -447,9 +552,33 @@ async function loadRealVouchers(projectKey, month, year) {
         if (mSel && month !== undefined && mSel.value !== targetMonth) mSel.value = targetMonth;
         if (ySel && year !== undefined && ySel.value !== targetYear) ySel.value = targetYear;
 
+        // If called directly without reqId (e.g. from month or year filter), initialize loading state
+        if (!reqId) {
+            if (activeVoucherAbortController) {
+                try { activeVoucherAbortController.abort(); } catch (e) {}
+            }
+            activeVoucherAbortController = new AbortController();
+            reqId = ++activeVoucherReqId;
+            abortSignal = activeVoucherAbortController.signal;
+            showVoucherLoadingSpinner(targetKey);
+        }
+
         updateVoucherCategoryButtons();
-        const resp = await fetch(`/api/vouchers?project=${encodeURIComponent(targetKey)}&month=${encodeURIComponent(targetMonth)}&year=${encodeURIComponent(targetYear)}&category=${encodeURIComponent(currentVoucherCategory)}`);
+        const resp = await fetch(`/api/vouchers?project=${encodeURIComponent(targetKey)}&month=${encodeURIComponent(targetMonth)}&year=${encodeURIComponent(targetYear)}&category=${encodeURIComponent(currentVoucherCategory)}`, {
+            signal: abortSignal
+        });
         const data = await resp.json();
+
+        // Stale check: if user switched project or period while fetch was running, IGNORE old response!
+        if (reqId !== activeVoucherReqId) {
+            return;
+        }
+
+        // Restore cards opacity
+        document.querySelectorAll('#tab-overview .glass-panel').forEach(panel => {
+            panel.classList.remove('opacity-50', 'pointer-events-none');
+        });
+
         if (data.status === 'success' && data.vouchers) {
             vouchersLoaded = true;
 
@@ -576,7 +705,13 @@ async function loadRealVouchers(projectKey, month, year) {
             updateOverviewCards(data);
         }
     } catch (e) {
+        if (e.name === 'AbortError') {
+            return;
+        }
         console.warn('Failed to load vouchers dynamically:', e);
+        document.querySelectorAll('#tab-overview .glass-panel').forEach(panel => {
+            panel.classList.remove('opacity-50', 'pointer-events-none');
+        });
     }
 }
 
@@ -1236,7 +1371,10 @@ document.addEventListener('DOMContentLoaded', () => {
     checkStatus();
     setInterval(checkStatus, 8000);
     updateVoucherCategoryButtons();
-    loadRealVouchers();
+
+    // Initialize with persisted project or default 010010
+    const savedProject = localStorage.getItem('sun_active_project') || '010010';
+    window.setActiveProject(savedProject);
 
     // Income / All Vouchers category toggle
     document.querySelectorAll('.voucher-category-btn').forEach(btn => {
@@ -1256,19 +1394,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (vProjectSelect) {
         vProjectSelect.addEventListener('change', (e) => {
-            const val = e.target.value;
-            if (hProjectSelect) hProjectSelect.value = val;
-            loadRealVouchers(val);
-            appendLog('INFO', `Switched project view to ${val}.`);
+            window.setActiveProject(e.target.value);
+            appendLog('INFO', `Switched project view to ${e.target.value}.`);
         });
     }
 
     if (hProjectSelect) {
         hProjectSelect.addEventListener('change', (e) => {
-            const val = e.target.value;
-            if (vProjectSelect) vProjectSelect.value = val;
-            loadRealVouchers(val);
-            appendLog('INFO', `Switched project view to ${val}.`);
+            window.setActiveProject(e.target.value);
+            appendLog('INFO', `Switched project view to ${e.target.value}.`);
         });
     }
 
@@ -2226,7 +2360,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Units & Ownership tab wiring
     const unitsProjectSelect = document.getElementById('select-units-project');
     if (unitsProjectSelect) {
-        unitsProjectSelect.addEventListener('change', (e) => loadUnits(e.target.value));
+        unitsProjectSelect.addEventListener('change', (e) => {
+            window.setActiveProject(e.target.value);
+        });
     }
     const unitsBlockSelect = document.getElementById('select-units-block');
     if (unitsBlockSelect) {
