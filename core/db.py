@@ -2,7 +2,7 @@ import os
 import re
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 
@@ -939,6 +939,19 @@ class DatabaseManager:
                         }
                     else:
                         row_dict = dict(r)
+
+                    # Ensure timestamps from PostgreSQL (previously saved in UTC) are normalized to Indian Standard Time (IST)
+                    c_at = row_dict.get("created_at")
+                    ts_iso = row_dict.get("timestamp_iso")
+                    if self.is_postgres and ts_iso and ("+05:30" not in str(ts_iso) and "+0530" not in str(ts_iso)):
+                        try:
+                            clean_iso = str(ts_iso).split("+")[0].replace("Z", "")
+                            dt_val = datetime.fromisoformat(clean_iso) + timedelta(hours=5, minutes=30)
+                            row_dict["created_at"] = dt_val.strftime("%Y-%m-%d %H:%M:%S")
+                            row_dict["timestamp_iso"] = dt_val.strftime("%Y-%m-%dT%H:%M:%S+05:30")
+                        except Exception:
+                            pass
+
                     det = row_dict.get("details")
                     if det:
                         try:
@@ -964,15 +977,28 @@ class DatabaseManager:
                 cur.execute("SELECT status, COUNT(*) FROM activity_logs GROUP BY status")
                 by_status = {r[0]: r[1] for r in cur.fetchall()}
 
-                cur.execute("SELECT created_at FROM activity_logs ORDER BY id DESC LIMIT 1")
+                cur.execute("SELECT created_at, timestamp_iso FROM activity_logs ORDER BY id DESC LIMIT 1")
                 last_row = cur.fetchone()
-                last_active = last_row[0] if last_row else None
+                last_active = None
+                last_active_iso = None
+                if last_row:
+                    last_active = last_row[0]
+                    last_active_iso = last_row[1] if len(last_row) > 1 else None
+                    if self.is_postgres and last_active_iso and ("+05:30" not in str(last_active_iso) and "+0530" not in str(last_active_iso)):
+                        try:
+                            clean_iso = str(last_active_iso).split("+")[0].replace("Z", "")
+                            dt_val = datetime.fromisoformat(clean_iso) + timedelta(hours=5, minutes=30)
+                            last_active = dt_val.strftime("%Y-%m-%d %H:%M:%S")
+                            last_active_iso = dt_val.strftime("%Y-%m-%dT%H:%M:%S+05:30")
+                        except Exception:
+                            pass
 
                 return {
                     "total": total,
                     "by_type": by_type,
                     "by_status": by_status,
-                    "last_active": last_active
+                    "last_active": last_active,
+                    "last_active_iso": last_active_iso
                 }
         except Exception as e:
             print(f"[DatabaseManager] Activity stats error: {e}")

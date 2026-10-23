@@ -2525,14 +2525,29 @@ const ACTIVITY_TYPE_CONFIG = {
     'SYSTEM_EVENT': { label: 'System Event', icon: 'dns', bg: 'bg-slate-100 text-slate-700 border-slate-200' }
 };
 
-function formatRelativeTime(dateStr) {
-    if (!dateStr) return '—';
+function formatRelativeTime(dateStr, isoStr) {
+    if (!dateStr && !isoStr) return '—';
     try {
-        const d = new Date(dateStr.replace(' ', 'T'));
-        if (isNaN(d.getTime())) return dateStr;
+        let d = null;
+        if (isoStr && (isoStr.includes('+') || isoStr.endsWith('Z'))) {
+            d = new Date(isoStr);
+        } else if (dateStr) {
+            const clean = dateStr.replace(' ', 'T');
+            if (clean.includes('+') || clean.endsWith('Z')) {
+                d = new Date(clean);
+            } else {
+                const parts = dateStr.split(/[- :]/);
+                if (parts.length >= 6) {
+                    d = new Date(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
+                } else {
+                    d = new Date(clean);
+                }
+            }
+        }
+        if (!d || isNaN(d.getTime())) return dateStr || '—';
         const now = new Date();
         const diffSec = Math.floor((now - d) / 1000);
-        if (diffSec < 10) return 'Just now';
+        if (diffSec < 15) return 'Just now';
         if (diffSec < 60) return `${diffSec}s ago`;
         const diffMin = Math.floor(diffSec / 60);
         if (diffMin < 60) return `${diffMin}m ago`;
@@ -2542,7 +2557,7 @@ function formatRelativeTime(dateStr) {
         if (diffDay < 7) return `${diffDay}d ago`;
         return dateStr.split(' ')[0];
     } catch {
-        return dateStr;
+        return dateStr || '—';
     }
 }
 
@@ -2616,8 +2631,8 @@ function updateActivityStats(stats, total) {
     if (statGstr) statGstr.textContent = byType['GSTR_GENERATE'] || 0;
 
     if (statLast && stats.last_active) {
-        statLast.textContent = formatRelativeTime(stats.last_active);
-        statLast.title = stats.last_active;
+        statLast.textContent = formatRelativeTime(stats.last_active, stats.last_active_iso);
+        statLast.title = stats.last_active + ' (IST)';
     }
 }
 
@@ -2663,13 +2678,16 @@ function renderActivityTable(logs) {
         const projectBadge = log.project_code ? `<span class="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-100 text-slate-800 border border-slate-200/80" title="${log.project_code}">${escapeHtml(projectLabel)}</span>` : '<span class="text-slate-400">—</span>';
 
         const exactTime = log.created_at || '';
-        const relTime = formatRelativeTime(exactTime);
+        const relTime = formatRelativeTime(exactTime, log.timestamp_iso);
 
         html += `
             <tr class="hover:bg-slate-50/80 transition-colors">
                 <td class="py-3 px-4 font-mono text-xs whitespace-nowrap">
                     <div class="font-bold text-slate-800">${relTime}</div>
-                    <div class="text-[10px] text-slate-400">${exactTime}</div>
+                    <div class="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                        <span>${exactTime}</span>
+                        <span class="text-[9px] font-semibold px-1 py-0.2 rounded bg-slate-100 text-slate-500 border border-slate-200/60">IST</span>
+                    </div>
                 </td>
                 <td class="py-3 px-3 whitespace-nowrap">
                     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${typeCfg.bg}">

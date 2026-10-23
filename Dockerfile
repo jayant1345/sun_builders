@@ -2,12 +2,17 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install native archive extraction utilities for .zip, .rar, and .7z
+# Set container timezone to Asia/Kolkata (Indian Standard Time)
+ENV TZ=Asia/Kolkata
+
+# Install native archive extraction utilities and tzdata
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    tzdata \
     p7zip-full \
     unar \
     libarchive-tools \
     unzip \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

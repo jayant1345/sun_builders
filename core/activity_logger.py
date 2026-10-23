@@ -3,11 +3,18 @@ import sys
 import json
 import logging
 from logging.handlers import RotatingFileHandler
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import csv
 import io
 
 from core.db import db
+
+# Indian Standard Time (IST = UTC + 5:30)
+IST_TZ = timezone(timedelta(hours=5, minutes=30), name="IST")
+
+def get_ist_now():
+    """Returns current datetime in Indian Standard Time (IST)."""
+    return datetime.now(timezone.utc).astimezone(IST_TZ)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -86,7 +93,7 @@ def log_activity(
     1. Persistent database table `activity_logs` (PostgreSQL / SQLite) for instant UI retrieval
     2. Persistent rotating log file `data/activity.log` for file-based tracing & compliance
     """
-    now = datetime.now()
+    now = get_ist_now()
     created_at = now.strftime("%Y-%m-%d %H:%M:%S")
     timestamp_iso = now.isoformat()
 
