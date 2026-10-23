@@ -234,6 +234,190 @@ function ensureProjectInSelect(sel, code, label) {
 let vouchersLoaded = false;
 let currentVoucherCategory = 'income';
 
+let allRawVouchers = [];
+let allFilteredVouchers = [];
+let currentVoucherPage = 1;
+let currentVoucherPageSize = 50;
+let currentVoucherCompanyCode = '010010';
+let currentVoucherProjectName = 'Sun Footprint';
+let currentVoucherPeriodDisplay = 'ALL';
+
+function renderVoucherTablePage() {
+    const tbody = document.getElementById('voucher-table-body');
+    const pageStart = document.getElementById('vch-page-start');
+    const pageEnd = document.getElementById('vch-page-end');
+    const pageTotal = document.getElementById('vch-page-total');
+    const paginationControls = document.getElementById('voucher-pagination-controls');
+    if (!tbody) return;
+
+    const total = allFilteredVouchers.length;
+    if (pageTotal) pageTotal.textContent = total.toLocaleString('en-IN');
+
+    if (total === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-12 text-on-surface-variant font-sans">
+            <div class="flex flex-col items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-outline text-3xl text-slate-300">receipt_long</span>
+                <span class="font-bold text-slate-700">No ${currentVoucherCategory === 'income' ? 'Income (Flat/Shop Receipt)' : ''} Vouchers Found</span>
+                <span class="text-xs text-slate-500 max-w-md">No transactions match your current search or period filters for ${escapeHtml(currentVoucherProjectName)} (${currentVoucherCompanyCode}).</span>
+            </div>
+        </td></tr>`;
+        if (pageStart) pageStart.textContent = '0';
+        if (pageEnd) pageEnd.textContent = '0';
+        if (paginationControls) paginationControls.innerHTML = '';
+        return;
+    }
+
+    const isAll = currentVoucherPageSize === 'ALL';
+    const pageSize = isAll ? total : parseInt(currentVoucherPageSize, 10);
+    const totalPages = isAll ? 1 : Math.ceil(total / pageSize);
+
+    if (currentVoucherPage > totalPages) currentVoucherPage = totalPages;
+    if (currentVoucherPage < 1) currentVoucherPage = 1;
+
+    const startIndex = (currentVoucherPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, total);
+
+    if (pageStart) pageStart.textContent = (startIndex + 1).toLocaleString('en-IN');
+    if (pageEnd) pageEnd.textContent = endIndex.toLocaleString('en-IN');
+
+    const pageSlice = allFilteredVouchers.slice(startIndex, endIndex);
+
+    tbody.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+
+    pageSlice.forEach(v => {
+        const tr = document.createElement('tr');
+        const unitDisplay = (v.flat_no && v.flat_no !== 'undefined') ? v.flat_no : ((v.unit && v.unit !== 'undefined') ? v.unit : '—');
+        const memberDisplay = (v.member_name && v.member_name !== 'undefined') ? v.member_name : ((v.name && v.name !== 'undefined') ? v.name : 'Member');
+        const hasUnit = unitDisplay && unitDisplay !== '—';
+
+        tr.className = `hover:bg-primary/10 transition-colors ${hasUnit ? 'cursor-pointer' : ''}`;
+        if (hasUnit) {
+            tr.setAttribute('title', `Click to view full records & statement for Unit ${unitDisplay}`);
+            tr.addEventListener('click', (e) => {
+                if (e.target.closest('.btn-edit-override')) return;
+                openUnitHistory(currentVoucherCompanyCode || '010010', unitDisplay);
+            });
+        }
+
+        let badgeHtml = '';
+        if (v.badge_type === 'bu_review') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-orange-500/10 text-orange-600 border border-orange-500/30 font-medium">⚠ ${v.classification}</span>`;
+        } else if (v.badge_type === 'review') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-500/10 text-red-600 border border-red-500/30 font-medium">⚠ ${v.classification}</span>`;
+        } else if (v.badge_type === 'excluded_manual') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-purple-500/10 text-purple-600 border border-purple-500/30 font-medium">✎ ${v.classification}</span>`;
+        } else if (v.badge_type === 'pass_through') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-sky-500/10 text-sky-600 border border-sky-500/30 font-medium">${v.classification}</span>`;
+        } else if (v.badge_type === 'creditor' || v.badge_type === 'expense') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-slate-400/10 text-slate-500 border border-slate-400/30 font-medium">${v.classification}</span>`;
+        } else if (v.badge_type === 'cancelled') {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-400/10 text-red-500 border border-red-400/30 font-medium line-through">${v.classification}</span>`;
+        } else if (v.badge_type === 'exempt' || (v.classification && v.classification.toLowerCase().includes('exempt'))) {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-secondary/10 text-secondary border border-secondary/30 font-medium">${v.classification}</span>`;
+        } else if (v.badge_type === 'taxable-5' || (v.classification && v.classification.includes('5%'))) {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/30 font-medium">${v.classification}</span>`;
+        } else if (v.badge_type === 'taxable-1' || (v.classification && v.classification.includes('1%'))) {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/30 font-medium">${v.classification}</span>`;
+        } else {
+            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-surface-container text-on-surface border border-outline-variant font-medium">${v.classification}</span>`;
+        }
+
+        const formattedCr = Number(v.cr_amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+        const pencilClass = v.has_override ? 'text-blue-600' : 'text-slate-300 hover:text-slate-500';
+
+        tr.innerHTML = `
+            <td class="py-2.5 px-3 text-on-surface whitespace-nowrap">${v.date}</td>
+            <td class="py-2.5 px-3 text-primary font-semibold font-mono whitespace-nowrap">${v.vch_no}</td>
+            <td class="py-2.5 px-3 font-mono font-bold whitespace-nowrap">
+                <span class="text-secondary bg-secondary/10 hover:bg-secondary/20 hover:scale-105 transition-all px-2.5 py-1 rounded border border-secondary/20 inline-block my-1 ${hasUnit ? 'cursor-pointer shadow-xs' : ''}" title="${hasUnit ? 'Click to view statement for Unit ' + unitDisplay : ''}">${unitDisplay}</span>
+            </td>
+            <td class="py-2.5 px-4 font-sans text-on-surface font-medium">${escapeHtml(memberDisplay)}</td>
+            <td class="py-2.5 px-3 text-on-surface-variant font-sans whitespace-nowrap">${escapeHtml(v.project || '')}</td>
+            <td class="py-2.5 px-3 text-on-surface-variant font-sans whitespace-nowrap">${v.type}</td>
+            <td class="py-2.5 px-3 text-right text-on-surface font-semibold font-mono whitespace-nowrap">₹${formattedCr}</td>
+            <td class="py-2.5 px-4 font-sans">${badgeHtml}</td>
+            <td class="py-2.5 px-2 text-center whitespace-nowrap">
+                <button type="button" class="btn-edit-override p-1 rounded hover:bg-slate-100 transition-colors ${pencilClass}" title="${v.has_override ? 'Classification manually overridden' : 'Correct classification'}">
+                    <span class="material-symbols-outlined text-[16px]">edit</span>
+                </button>
+            </td>
+        `;
+        tr.querySelector('.btn-edit-override').addEventListener('click', (e) => {
+            e.stopPropagation();
+            openOverrideModal(v);
+        });
+        fragment.appendChild(tr);
+    });
+    tbody.appendChild(fragment);
+
+    // Build smart pagination controls
+    if (paginationControls) {
+        if (totalPages <= 1) {
+            paginationControls.innerHTML = '';
+            return;
+        }
+
+        let ctrlHtml = '';
+        const prevDisabled = currentVoucherPage <= 1 ? 'disabled opacity-40 cursor-not-allowed' : 'hover:bg-slate-200 cursor-pointer';
+        ctrlHtml += `<button type="button" ${currentVoucherPage <= 1 ? 'disabled' : ''} onclick="goToVoucherPage(${currentVoucherPage - 1})" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 transition-colors ${prevDisabled}">‹ Prev</button>`;
+
+        let pageNumbers = [];
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) pageNumbers.push(i);
+        } else {
+            pageNumbers.push(1);
+            if (currentVoucherPage > 3) pageNumbers.push('...');
+            const start = Math.max(2, currentVoucherPage - 1);
+            const end = Math.min(totalPages - 1, currentVoucherPage + 1);
+            for (let i = start; i <= end; i++) pageNumbers.push(i);
+            if (currentVoucherPage < totalPages - 2) pageNumbers.push('...');
+            pageNumbers.push(totalPages);
+        }
+
+        pageNumbers.forEach(p => {
+            if (p === '...') {
+                ctrlHtml += `<span class="px-2 py-1 text-slate-400 text-xs font-bold">…</span>`;
+            } else if (p === currentVoucherPage) {
+                ctrlHtml += `<button type="button" class="px-2.5 py-1 rounded-lg bg-blue-600 text-white text-xs font-bold shadow-xs border border-blue-600">${p}</button>`;
+            } else {
+                ctrlHtml += `<button type="button" onclick="goToVoucherPage(${p})" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 transition-colors cursor-pointer">${p}</button>`;
+            }
+        });
+
+        const nextDisabled = currentVoucherPage >= totalPages ? 'disabled opacity-40 cursor-not-allowed' : 'hover:bg-slate-200 cursor-pointer';
+        ctrlHtml += `<button type="button" ${currentVoucherPage >= totalPages ? 'disabled' : ''} onclick="goToVoucherPage(${currentVoucherPage + 1})" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 transition-colors ${nextDisabled}">Next ›</button>`;
+
+        paginationControls.innerHTML = ctrlHtml;
+    }
+}
+
+window.goToVoucherPage = function(page) {
+    currentVoucherPage = page;
+    renderVoucherTablePage();
+    const tableContainer = document.querySelector('#voucher-table-body')?.closest('.overflow-y-auto');
+    if (tableContainer) tableContainer.scrollTop = 0;
+};
+
+function filterVouchersBySearch(query) {
+    const q = (query || '').trim().toLowerCase();
+    if (!q) {
+        allFilteredVouchers = allRawVouchers.slice();
+    } else {
+        allFilteredVouchers = allRawVouchers.filter(v => {
+            const flat = String(v.flat_no || v.unit || '').toLowerCase();
+            const member = String(v.member_name || v.name || '').toLowerCase();
+            const vch = String(v.vch_no || '').toLowerCase();
+            const narration = String(v.narration || '').toLowerCase();
+            const cls = String(v.classification || '').toLowerCase();
+            const proj = String(v.project || '').toLowerCase();
+            return flat.includes(q) || member.includes(q) || vch.includes(q) || narration.includes(q) || cls.includes(q) || proj.includes(q);
+        });
+    }
+    currentVoucherPage = 1;
+    renderVoucherTablePage();
+}
+
 function updateVoucherCategoryButtons() {
     document.querySelectorAll('.voucher-category-btn').forEach(btn => {
         if (btn.getAttribute('data-category') === currentVoucherCategory) {
@@ -292,84 +476,14 @@ async function loadRealVouchers(projectKey, month, year) {
                 incomeCountBadge.textContent = typeof data.income_count === 'number' ? `(${data.income_count})` : '';
             }
 
-            const tbody = document.getElementById('voucher-table-body');
-            if (tbody) {
-                tbody.innerHTML = '';
-                if (data.vouchers.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-on-surface-variant font-sans">
-                        <div class="flex flex-col items-center justify-center gap-2">
-                            <span class="material-symbols-outlined text-outline text-3xl">receipt_long</span>
-                            <span class="font-bold text-on-surface">No ${currentVoucherCategory === 'income' ? 'Income (Flat/Shop Receipt)' : ''} Vouchers for ${data.project_name} (${data.company_code}) in Period ${data.period_display || 'Selected'}</span>
-                            <span class="text-xs text-on-surface-variant max-w-md">No transactions recorded for this selected month and year. Switch the filter to "All Months" or another period, ${currentVoucherCategory === 'income' ? 'toggle to "All Vouchers" to check purchase/expense entries, ' : ''}or run Tally Sync.</span>
-                        </div>
-                    </td></tr>`;
-                } else {
-                    data.vouchers.forEach(v => {
-                        const tr = document.createElement('tr');
-                        const unitDisplay = (v.flat_no && v.flat_no !== 'undefined') ? v.flat_no : ((v.unit && v.unit !== 'undefined') ? v.unit : '—');
-                        const memberDisplay = (v.member_name && v.member_name !== 'undefined') ? v.member_name : ((v.name && v.name !== 'undefined') ? v.name : 'Member');
-                        const hasUnit = unitDisplay && unitDisplay !== '—';
+            // Store raw vouchers for instant client-side pagination and search
+            allRawVouchers = data.vouchers || [];
+            currentVoucherCompanyCode = data.company_code || '010010';
+            currentVoucherProjectName = data.project_name || 'Project';
+            currentVoucherPeriodDisplay = data.period_display || 'ALL';
 
-                        tr.className = `hover:bg-primary/10 transition-colors ${hasUnit ? 'cursor-pointer' : ''}`;
-                        if (hasUnit) {
-                            tr.setAttribute('title', `Click to view full records & statement for Unit ${unitDisplay}`);
-                            tr.addEventListener('click', (e) => {
-                                if (e.target.closest('.btn-edit-override')) return;
-                                openUnitHistory(data.company_code || '010010', unitDisplay);
-                            });
-                        }
-                        
-                        let badgeHtml = '';
-                        if (v.badge_type === 'bu_review') {
-                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-orange-500/10 text-orange-600 border border-orange-500/30 font-medium">⚠ ${v.classification}</span>`;
-                        } else if (v.badge_type === 'review') {
-                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-500/10 text-red-600 border border-red-500/30 font-medium">⚠ ${v.classification}</span>`;
-                        } else if (v.badge_type === 'excluded_manual') {
-                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-purple-500/10 text-purple-600 border border-purple-500/30 font-medium">✎ ${v.classification}</span>`;
-                        } else if (v.badge_type === 'pass_through') {
-                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-sky-500/10 text-sky-600 border border-sky-500/30 font-medium">${v.classification}</span>`;
-                        } else if (v.badge_type === 'creditor' || v.badge_type === 'expense') {
-                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-slate-400/10 text-slate-500 border border-slate-400/30 font-medium">${v.classification}</span>`;
-                        } else if (v.badge_type === 'cancelled') {
-                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-red-400/10 text-red-500 border border-red-400/30 font-medium line-through">${v.classification}</span>`;
-                        } else if (v.badge_type === 'exempt' || (v.classification && v.classification.toLowerCase().includes('exempt'))) {
-                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-secondary/10 text-secondary border border-secondary/30 font-medium">${v.classification}</span>`;
-                        } else if (v.badge_type === 'taxable-5' || (v.classification && v.classification.includes('5%'))) {
-                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/30 font-medium">${v.classification}</span>`;
-                        } else if (v.badge_type === 'taxable-1' || (v.classification && v.classification.includes('1%'))) {
-                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/30 font-medium">${v.classification}</span>`;
-                        } else {
-                            badgeHtml = `<span class="px-2 py-0.5 rounded text-xs bg-surface-container text-on-surface border border-outline-variant font-medium">${v.classification}</span>`;
-                        }
-
-                        const formattedCr = Number(v.cr_amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-                        const pencilClass = v.has_override ? 'text-blue-600' : 'text-slate-300 hover:text-slate-500';
-
-                        tr.innerHTML = `
-                            <td class="py-2.5 px-3 text-on-surface">${v.date}</td>
-                            <td class="py-2.5 px-3 text-primary font-semibold font-mono">${v.vch_no}</td>
-                            <td class="py-2.5 px-3 font-mono font-bold">
-                                <span class="text-secondary bg-secondary/10 hover:bg-secondary/20 hover:scale-105 transition-all px-2.5 py-1 rounded border border-secondary/20 inline-block my-1 ${hasUnit ? 'cursor-pointer shadow-xs' : ''}" title="${hasUnit ? 'Click to view full statement for Unit ' + unitDisplay : ''}">${unitDisplay}</span>
-                            </td>
-                            <td class="py-2.5 px-4 font-sans text-on-surface font-medium">${memberDisplay}</td>
-                            <td class="py-2.5 px-3 text-on-surface-variant font-sans">${v.project}</td>
-                            <td class="py-2.5 px-3 text-on-surface-variant font-sans">${v.type}</td>
-                            <td class="py-2.5 px-3 text-right text-on-surface font-semibold font-mono">₹${formattedCr}</td>
-                            <td class="py-2.5 px-4 font-sans">${badgeHtml}</td>
-                            <td class="py-2.5 px-2 text-center">
-                                <button type="button" class="btn-edit-override p-1 rounded hover:bg-slate-100 transition-colors ${pencilClass}" title="${v.has_override ? 'Classification manually overridden - click to edit' : 'Correct classification'}">
-                                    <span class="material-symbols-outlined text-[16px]">edit</span>
-                                </button>
-                            </td>
-                        `;
-                        tr.querySelector('.btn-edit-override').addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            openOverrideModal(v);
-                        });
-                        tbody.appendChild(tr);
-                    });
-                }
-            }
+            const searchInput = document.getElementById('voucher-search-input');
+            filterVouchersBySearch(searchInput ? searchInput.value : '');
 
             // Update stats cards
             const totalTitle = document.getElementById('vouchers-metric-title-total');
@@ -1394,11 +1508,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const voucherSearch = document.getElementById('voucher-search-input');
     if (voucherSearch) {
         voucherSearch.addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
-            document.querySelectorAll('#voucher-table-body tr').forEach(row => {
-                const text = row.innerText.toLowerCase();
-                row.style.display = text.includes(query) ? '' : 'none';
-            });
+            filterVouchersBySearch(e.target.value);
+        });
+    }
+
+    const voucherPageSize = document.getElementById('select-voucher-page-size');
+    if (voucherPageSize) {
+        voucherPageSize.addEventListener('change', (e) => {
+            currentVoucherPageSize = e.target.value;
+            currentVoucherPage = 1;
+            renderVoucherTablePage();
         });
     }
 
