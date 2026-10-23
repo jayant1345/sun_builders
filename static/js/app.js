@@ -241,6 +241,7 @@ let currentVoucherPageSize = 50;
 let currentVoucherCompanyCode = '010010';
 let currentVoucherProjectName = 'Sun Footprint';
 let currentVoucherPeriodDisplay = 'ALL';
+let activeProgressivePeriod = { month: '09', year: '2026', label: 'SEP-26' };
 
 function renderVoucherTablePage() {
     const tbody = document.getElementById('voucher-table-body');
@@ -474,6 +475,34 @@ async function loadRealVouchers(projectKey, month, year) {
             const incomeCountBadge = document.getElementById('voucher-category-income-count');
             if (incomeCountBadge) {
                 incomeCountBadge.textContent = typeof data.income_count === 'number' ? `(${data.income_count})` : '';
+            }
+
+            if (data.progressive_period) {
+                activeProgressivePeriod = data.progressive_period;
+                const progBtnLabel = document.getElementById('btn-filter-progressive-label');
+                if (progBtnLabel) progBtnLabel.textContent = `Next Progressive: ${activeProgressivePeriod.label}`;
+                const progExportText = document.getElementById('btn-export-progressive-text');
+                if (progExportText) progExportText.textContent = `Export ${activeProgressivePeriod.label} GSTR-1`;
+            }
+
+            // Update Progressive Banner State
+            const progTitle = document.getElementById('progressive-banner-title');
+            const progStatus = document.getElementById('progressive-banner-status');
+            const progSub = document.getElementById('progressive-banner-sub');
+            const isProgressiveActive = (data.selected_month === activeProgressivePeriod.month || (data.period_display && data.period_display.includes(activeProgressivePeriod.label)));
+
+            if (progTitle && progStatus && progSub) {
+                if (isProgressiveActive) {
+                    progTitle.textContent = `Progressive Monthly Cycle: ${activeProgressivePeriod.label} Active`;
+                    progStatus.textContent = 'Past Vouchers Checked & Locked';
+                    progStatus.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200';
+                    progSub.textContent = `All historical vouchers through August 2026 are verified. Review and check only newly added progressive vouchers (${data.count} vouchers) for ${activeProgressivePeriod.label}.`;
+                } else {
+                    progTitle.textContent = `Historical Voucher View: ${data.period_display || 'ALL'}`;
+                    progStatus.textContent = 'All Records Mode';
+                    progStatus.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200';
+                    progSub.textContent = `Showing all vouchers across periods. Click "Next Progressive: ${activeProgressivePeriod.label}" to isolate and audit only the next progressive monthly return.`;
+                }
             }
 
             // Store raw vouchers for instant client-side pagination and search
@@ -1512,12 +1541,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const voucherPageSize = document.getElementById('select-voucher-page-size');
-    if (voucherPageSize) {
-        voucherPageSize.addEventListener('change', (e) => {
-            currentVoucherPageSize = e.target.value;
-            currentVoucherPage = 1;
-            renderVoucherTablePage();
+    const btnFilterProgressive = document.getElementById('btn-filter-progressive');
+    if (btnFilterProgressive) {
+        btnFilterProgressive.addEventListener('click', () => {
+            const targetM = activeProgressivePeriod ? activeProgressivePeriod.month : '09';
+            const targetY = activeProgressivePeriod ? activeProgressivePeriod.year : '2026';
+            if (vMonthSelect) vMonthSelect.value = targetM;
+            if (vYearSelect) vYearSelect.value = targetY;
+            loadRealVouchers(currentVoucherCompanyCode, targetM, targetY);
+            appendLog('INFO', `Switched to Next Monthly Progressive Vouchers view (${activeProgressivePeriod.label || targetM}). All previous verified months preserved.`);
+        });
+    }
+
+    const btnExportProgressiveAction = document.getElementById('btn-export-progressive-action');
+    if (btnExportProgressiveAction) {
+        btnExportProgressiveAction.addEventListener('click', () => {
+            const pLabel = activeProgressivePeriod ? activeProgressivePeriod.label : 'SEP-26';
+            window.location.href = `/api/download/GSTR-1_${pLabel}_AUTOMATED.xlsx`;
+            appendLog('INFO', `Triggered automated GSTR-1 Excel download for progressive period ${pLabel}.`);
         });
     }
 

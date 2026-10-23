@@ -39,12 +39,52 @@ CREDITOR_KEYWORDS = [
 # checked top-to-bottom, first match wins, since e.g. a stamp-duty narration might also contain
 # "registration" in the same line.
 PASS_THROUGH_KEYWORDS = [
-    ("stamp_duty", [r'\bstamp duty\b']),
-    ("reg_fee", [r'\bregistration\b', r'\breg(?:n|istration)?\.?\s*fee\b']),
-    ("refundable_deposit", [r'\brefund', r'\bsecurity deposit\b', r'\bmember deposit\b']),
-    ("electricity_exp", [r'\belectric\b', r'\belectricity\b', r'\blight bill\b', r'\bauda\b', r'\baec\b', r'\btorrent\b']),
-    ("maintenance_deposit", [r'\bmaintenance\b', r'\bmaintanance\b']),
+    ("stamp_duty", [
+        r'\bstamp duty\b', r'\bstamp\b', r'\bstampduty\b', r'\bfrank(?:ing)?\b'
+    ]),
+    ("reg_fee", [
+        r'\bregistration\b', r'\breg(?:n|istration)?\.?\s*fee\b', r'\breg\b'
+    ]),
+    ("refundable_deposit", [
+        r'\brefund', r'\bsecurity deposit\b', r'\bmember deposit\b', r'\bcaution deposit\b'
+    ]),
+    ("electricity_exp", [
+        r'\belectric\b', r'\belectricity\b', r'\blight bill\b', r'\bauda\b', r'\baec\b', r'\btorrent\b',
+        r'\bpgvcl\b', r'\bgeb\b', r'\bugvcl\b', r'\bdgvcl\b', r'\bmgvcl\b', r'\bpower deposit\b',
+        r'\belectric deposit\b', r'\bmeter deposit\b', r'\btransformer\b'
+    ]),
+    ("maintenance_deposit", [
+        r'\bmaintenance\b', r'\bmaintanance\b', r'\bsociety\b', r'\bsociety deposit\b',
+        r'\bsociety maintenance\b', r'\bsociety maintanance\b', r'\bsociety fund\b',
+        r'\bsinking fund\b', r'\badhoc\b'
+    ]),
 ]
+
+def is_valid_unit_code(unit_str: str) -> bool:
+    """Returns True ONLY if unit_str is an authentic real estate block/unit/flat code.
+    Rejects person names (Sonal, Hemil, Subhash), banks, deposits, expenses, and words without digits."""
+    if not unit_str:
+        return False
+    u = str(unit_str).strip().upper()
+    if u in ("", "—", "-", "N/A", "UNIT N/A", "UNDEFINED", "NONE", "NULL"):
+        return False
+    # A real flat/unit code in Sun Builders portfolio ALWAYS contains digits
+    if not re.search(r'\d', u):
+        return False
+    # Disallow common words that accidentally got attached
+    blacklisted = [
+        "BANK", "HDFC", "AXIS", "ICICI", "SBI", "CASH", "DEPOSIT", "AUDA", "PGVCL",
+        "GEB", "EXPENSE", "PURCHASE", "CHEQUE", "RETURN", "BROKERAGE", "COMMISSION",
+        "SOCIETY", "KASAR", "DISCOUNT", "ROUND"
+    ]
+    if any(b in u for b in blacklisted):
+        return False
+    patterns = [
+        r'^[A-Z]{1,2}[\-_/\s]?\d{1,5}[A-Z]?$',
+        r'^(?:SHOP|SH|OFF|OFFICE|PLOT|FLAT|UNIT)[\-_/\s]?\d{1,5}[A-Z]?$',
+        r'^\d{1,5}[A-Z]?$'
+    ]
+    return any(re.match(p, u) for p in patterns)
 
 def classify_pass_through_type(party_str: str, raw_name: str = "", narr: str = ""):
     """Returns the non-GST pass-through category ('stamp_duty', 'reg_fee',

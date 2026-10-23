@@ -653,6 +653,12 @@
                 </select>
               </div>
 
+              <!-- Next Progressive Month Quick Action Button -->
+              <button id="btn-filter-progressive" type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold shadow-xs transition-all active:scale-[0.98] cursor-pointer" title="Focus exclusively on the next monthly progressive vouchers (SEP-26) for review and statutory filing">
+                <span class="material-symbols-outlined text-[16px]">bolt</span>
+                <span id="btn-filter-progressive-label">Next Progressive: SEP-26</span>
+              </button>
+
               <!-- BU Date Entry Button -->
               <button id="btn-open-bu-modal" onclick="window.openBuModal && window.openBuModal()" type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer">
                 <span class="material-symbols-outlined text-[16px]">edit_calendar</span>
@@ -669,6 +675,28 @@
             <div class="flex items-center gap-2 text-xs text-slate-500 font-mono">
               <span id="active-company-badge" class="px-3 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold shadow-xs">Company: 010010 Loaded</span>
               <span id="voucher-active-period-badge" class="px-2.5 py-1 rounded-lg bg-blue-100 border border-blue-200 text-blue-800 font-bold">Period: ALL</span>
+            </div>
+          </div>
+
+          <!-- Progressive Audit Cycle Notice Banner -->
+          <div id="progressive-audit-banner" class="mb-3 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-emerald-50/80 border border-blue-200 flex flex-wrap items-center justify-between gap-2 shadow-xs transition-all">
+            <div class="flex items-center gap-2.5">
+              <div class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+                <span class="material-symbols-outlined text-[18px]">verified</span>
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <span id="progressive-banner-title" class="font-bold text-blue-950 text-xs">Progressive Monthly Cycle: SEP-26 Active</span>
+                  <span id="progressive-banner-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Past Vouchers Checked &amp; Locked</span>
+                </div>
+                <p id="progressive-banner-sub" class="text-[11px] text-slate-600">All historical vouchers through August 2026 are verified. Review and check only newly added progressive vouchers below for September 2026.</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btn-export-progressive-action" type="button" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-[0.98]">
+                <span class="material-symbols-outlined text-[16px]">file_download</span>
+                <span id="btn-export-progressive-text">Export SEP-26 GSTR-1</span>
+              </button>
             </div>
           </div>
 

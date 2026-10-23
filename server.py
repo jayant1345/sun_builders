@@ -15,7 +15,7 @@ from core.tally_file_reader import TallyFileReader
 from core.gst_rules import (
     RealEstateGSTRules, is_creditor_party, is_after_bu_member, is_cancelled_booking,
     is_plausible_receipt_amount, is_voucher_after_bu_date, parse_voucher_date, calculate_inclusive_tax,
-    classify_pass_through_type
+    classify_pass_through_type, is_valid_unit_code
 )
 from core.excel_generator import ExcelGenerator
 from core.db import db
@@ -35,20 +35,22 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def classify_voucher_income(unit_str, party_str, orig_str="", narr="", amount=None):
-    """Identifies whether a voucher is a genuine customer flat/shop owner payment (income)
-    vs. anything else: a purchase/expense/creditor bill, a non-GST pass-through (stamp duty,
-    registration fee, refundable deposit), a cancelled/refunded booking, or an implausible
-    single-voucher amount that doesn't look like a real owner payment (e.g. a sale-deed/
-    agreement-value journal entry swept in because Tally's VOUCHERTYPENAME isn't filtered).
+    """Identifies whether a voucher is pure, genuine builder customer unit installment/booking income.
+    Strictly excludes:
+    - Creditors, vendors, contractors, and general expense bills
+    - Cancelled / refunded bookings
+    - Non-GST pass-through payments: AUDA, PGVCL/electricity, society deposits, maintenance, stamp duty, etc.
+    - Rows without an authentic block/flat/unit code (names like Sonal, Hemil, Subhash, etc. are rejected).
     """
     if is_creditor_party(party_str, orig_str, narr):
         return False
     if is_cancelled_booking(party_str, orig_str, narr):
         return False
-    u = (unit_str or "").strip()
-    if not u or u in ("—", "-", "N/A", "Unit N/A"):
+    # AUDA, PGVCL, society deposits, maintenance deposits, stamp duty are NOT builder income
+    if classify_pass_through_type(party_str, orig_str, narr):
         return False
-    if not re.search(r"\d", u) and not any(k in (party_str or "").lower() for k in ["shop", "sh-", "sh "]):
+    u = (unit_str or "").strip()
+    if not is_valid_unit_code(u):
         return False
     if amount is not None and not is_plausible_receipt_amount(float(amount)):
         return False
@@ -1133,36 +1135,51 @@ def parse_unit_and_names(raw_text):
         return "—", "Member"
     import re
     raw = str(raw_text).replace('_x000D_\n', ' ').replace('_x000D_', ' ').strip()
-    
-    # Pattern A: Standard Block and Flat with separator (-, /, space, comma), e.g. 'C/702 Taraben Vasantlal Jain, Jain Amrita', 'A-1102,Dharman...', 'D/102 Disha...'
-    m = re.match(r'^([A-Za-z]{1,4})\s*[\-_/,\s]\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
+
+    # Pattern 1: Explicit Shop / Office / Plot / Flat prefix: e.g. 'Shop 118 Amit Bhavsar', 'SH-403 Nehal Parikh'
+    m_pref = re.match(r'^(SHOP|SH|OFF|OFFICE|PLOT|FLAT|UNIT)\s*[\-_/,\s]?\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw, re.IGNORECASE)
+    if m_pref:
+        pref = m_pref.group(1).upper()
+        if pref in ["SH", "SHOP"]:
+            unit = f"SHOP-{m_pref.group(2)}"
+        elif pref in ["OFF", "OFFICE"]:
+            unit = f"OFF-{m_pref.group(2)}"
+        elif pref == "PLOT":
+            unit = f"PLOT-{m_pref.group(2)}"
+        else:
+            unit = f"{pref}-{m_pref.group(2)}"
+        rest_name = re.sub(r'^[,;.:\-\s]+', '', m_pref.group(3).strip()).strip()
+        rest_name = re.sub(r'\s+', ' ', rest_name)
+        return unit, rest_name if rest_name else "Member"
+
+    # Pattern 2: Single or 2-letter Tower/Block + Flat digits: e.g. 'A-101', 'O-1401', 'I/1403', 'K-603'
+    # Towers in real estate are 1-2 letters (A, B, C, ... AA, etc.), NOT names like 'Sonal' (5 letters)!
+    m = re.match(r'^([A-Za-z]{1,2})\s*[\-_/,\s]\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
     if m:
         block = m.group(1).upper()
         flat = m.group(2)
-        rest_name = m.group(3).strip()
         unit = f"{block}-{flat}"
-        rest_name = re.sub(r'^[,;.:\-\s]+', '', rest_name).strip()
+        rest_name = re.sub(r'^[,;.:\-\s]+', '', m.group(3).strip()).strip()
         rest_name = re.sub(r'\s+', ' ', rest_name)
         return unit, rest_name if rest_name else "Member"
 
-    # Pattern B: Attached block and digits without separator, e.g. 'L1102,Sudhanshu Agarwal'
-    m2 = re.match(r'^([A-Za-z]{1,4})(\d{2,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
+    # Pattern 3: Block + digits glued without separator: e.g. 'L1102,Sudhanshu Agarwal'
+    m2 = re.match(r'^([A-Za-z]{1,2})(\d{2,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
     if m2:
         block = m2.group(1).upper()
         flat = m2.group(2)
-        rest_name = m2.group(3).strip()
         unit = f"{block}-{flat}"
-        rest_name = re.sub(r'^[,;.:\-\s]+', '', rest_name).strip()
+        rest_name = re.sub(r'^[,;.:\-\s]+', '', m2.group(3).strip()).strip()
         rest_name = re.sub(r'\s+', ' ', rest_name)
         return unit, rest_name if rest_name else "Member"
 
-    # Pattern C: Fallback comma / semicolon / dash
+    # Pattern 4: Fallback comma / semicolon / dash ONLY IF the first part is a valid unit code
     for sep in [',', ';', '-']:
         if sep in raw:
             parts = raw.split(sep, 1)
             p0 = parts[0].strip()
             p1 = parts[1].strip()
-            if len(p0) <= 8 and any(char.isdigit() for char in p0):
+            if is_valid_unit_code(p0):
                 return p0, p1 if p1 else "Member"
 
     return "Unit N/A", raw
@@ -1818,6 +1835,9 @@ def api_vouchers():
     income_count = sum(1 for v in all_vouchers if v.get("is_income"))
     expense_count = len(all_vouchers) - income_count
 
+    # Determine next progressive period (the newest period available, e.g. SEP-26)
+    progressive_period = available_periods[0] if available_periods else {"month": "09", "year": "2026", "label": "SEP-26"}
+
     return jsonify({
         "status": "success",
         "project_key": target_key,
@@ -1835,6 +1855,7 @@ def api_vouchers():
         "expense_count": expense_count,
         "period_display": period_display,
         "available_periods": available_periods,
+        "progressive_period": progressive_period,
         "count": len(filtered_vouchers),
         "total_gross": total_gross,
         "total_deductions": total_deductions,
@@ -2555,11 +2576,26 @@ def api_vouchers_sync():
         project_code = matched_pcfg.get("code", project_code)
         project = matched_pcfg.get("display_name", project)
 
-    # Save synced payload in data directory
+    # Save synced payload in data directory (merging if progressive sync)
+    sync_type = str(data.get("sync_type") or "full").lower()
     sync_file = os.path.join(BASE_DIR, "data", f"synced_{project.replace(' ', '_').lower()}.json")
     try:
-        with open(sync_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        if sync_type == "progressive" and os.path.exists(sync_file):
+            with open(sync_file, "r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+            existing_vouchers = existing_data.get("vouchers", []) if isinstance(existing_data, dict) else []
+            v_map = {(str(v.get("vch_no") or v.get("voucher_number") or ""), str(v.get("date") or "")): v for v in existing_vouchers}
+            for v in vouchers:
+                v_map[(str(v.get("vch_no") or v.get("voucher_number") or ""), str(v.get("date") or ""))] = v
+            merged_vouchers = list(v_map.values())
+            data_to_save = dict(data)
+            data_to_save["vouchers"] = merged_vouchers
+            data_to_save["count"] = len(merged_vouchers)
+            with open(sync_file, "w", encoding="utf-8") as f:
+                json.dump(data_to_save, f, indent=2)
+        else:
+            with open(sync_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
     except Exception as e:
         print("Error saving sync data:", e)
 

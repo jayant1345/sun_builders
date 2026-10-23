@@ -6,37 +6,57 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 
+from core.gst_rules import is_valid_unit_code
+
 def _parse_unit_and_name(raw_text):
     """Splits a raw Tally ledger name into (flat/unit code, owner name(s)).
-    Stops the flat-code capture right after the unit digits, so a ledger like
-    'I-803-Neetaben Trivedi - After BU' (multiple owners glued with a hyphen,
-    no comma) correctly yields unit='I-803' and name='Neetaben Trivedi - After BU'
-    instead of swallowing the first owner's name into the flat code.
+    Enforces authentic block/unit codes (A-101, SHOP-118, O-1401).
+    Rejects names (Sonal, Hemil, Subhash), banks, and words without digits.
     """
     if not raw_text:
         return "", ""
     raw = str(raw_text).replace('_x000D_\n', ' ').replace('_x000D_', ' ').strip()
 
-    m = re.match(r'^([A-Za-z]{1,4})\s*[\-_/,\s]\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
+    # Pattern 1: Explicit Shop / Office / Plot / Flat prefix: e.g. 'Shop 118 Amit Bhavsar', 'SH-403 Nehal Parikh'
+    m_pref = re.match(r'^(SHOP|SH|OFF|OFFICE|PLOT|FLAT|UNIT)\s*[\-_/,\s]?\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw, re.IGNORECASE)
+    if m_pref:
+        pref = m_pref.group(1).upper()
+        if pref in ["SH", "SHOP"]:
+            unit = f"SHOP-{m_pref.group(2)}"
+        elif pref in ["OFF", "OFFICE"]:
+            unit = f"OFF-{m_pref.group(2)}"
+        elif pref == "PLOT":
+            unit = f"PLOT-{m_pref.group(2)}"
+        else:
+            unit = f"{pref}-{m_pref.group(2)}"
+        rest_name = re.sub(r'^[,;.:\-\s]+', '', m_pref.group(3).strip()).strip()
+        rest_name = re.sub(r'\s+', ' ', rest_name)
+        return unit, rest_name if rest_name else "Member"
+
+    # Pattern 2: Single or 2-letter Tower/Block + Flat digits: e.g. 'A-101', 'O-1401', 'I/1403', 'K-603'
+    # Towers in real estate are 1-2 letters (A, B, C, ... AA, etc.), NOT names like 'Sonal' (5 letters)!
+    m = re.match(r'^([A-Za-z]{1,2})\s*[\-_/,\s]\s*(\d{1,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
     if m:
         unit = f"{m.group(1).upper()}-{m.group(2)}"
         rest_name = re.sub(r'^[,;.:\-\s]+', '', m.group(3).strip()).strip()
         rest_name = re.sub(r'\s+', ' ', rest_name)
-        return unit, rest_name
+        return unit, rest_name if rest_name else "Member"
 
-    m2 = re.match(r'^([A-Za-z]{1,4})(\d{2,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
+    # Pattern 3: Block + digits glued without separator: e.g. 'L1102,Sudhanshu Agarwal'
+    m2 = re.match(r'^([A-Za-z]{1,2})(\d{2,5}[A-Za-z]?)\s*[,;.:\-]*\s*(.*)$', raw)
     if m2:
         unit = f"{m2.group(1).upper()}-{m2.group(2)}"
         rest_name = re.sub(r'^[,;.:\-\s]+', '', m2.group(3).strip()).strip()
         rest_name = re.sub(r'\s+', ' ', rest_name)
-        return unit, rest_name
+        return unit, rest_name if rest_name else "Member"
 
+    # Pattern 4: Fallback comma / semicolon / dash ONLY IF the first part is a valid unit code
     for sep in [',', ';', '-']:
         if sep in raw:
             p0, p1 = raw.split(sep, 1)
             p0, p1 = p0.strip(), p1.strip()
-            if len(p0) <= 8 and any(ch.isdigit() for ch in p0):
-                return p0, p1
+            if is_valid_unit_code(p0):
+                return p0, p1 if p1 else "Member"
 
     return "", raw
 
@@ -263,6 +283,7 @@ class DatabaseManager:
             print(f"[DatabaseManager] Schema init warning: {e}")
 
         self._migrate_voucher_override_columns()
+        self.clean_bogus_units_and_reclassify()
 
     def _migrate_voucher_override_columns(self):
         """Adds the CA manual-override columns to an already-existing vouchers table
@@ -290,6 +311,49 @@ class DatabaseManager:
                 conn.commit()
         except Exception as e:
             print(f"[DatabaseManager] Override column migration warning: {e}")
+
+    def clean_bogus_units_and_reclassify(self):
+        """Scans all vouchers in DB across all projects.
+        1. If unit_no is not a valid unit code (e.g. 'Sonal', 'Hemil', 'AXIS', or words without digits),
+           clears unit_no to '' and restores party_name from party_original.
+        2. Reclassifies AUDA, PGVCL, society deposits, electric deposits, maintenance deposits as non-income.
+        """
+        fixed = 0
+        try:
+            with self.get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id, project_code, voucher_number, party_original, party_name, unit_no, narration FROM vouchers")
+                rows = cur.fetchall()
+                for r in rows:
+                    rid, pcode, vnum, orig, pname, uno, narr = r[0], r[1], r[2], r[3] or "", r[4] or "", r[5] or "", r[6] or ""
+                    uno_clean = uno.strip()
+                    needs_update = False
+                    new_uno = uno_clean
+                    new_pname = pname
+
+                    if uno_clean and not is_valid_unit_code(uno_clean):
+                        # Bogus unit (e.g. Sonal, Hemil, AXIS)
+                        cand_u, cand_name = _parse_unit_and_name(orig)
+                        if is_valid_unit_code(cand_u):
+                            new_uno = cand_u
+                            new_pname = cand_name or orig
+                        else:
+                            new_uno = ""
+                            new_pname = orig if orig else pname
+                        needs_update = True
+
+                    if needs_update:
+                        if self.is_postgres:
+                            cur.execute("UPDATE vouchers SET unit_no = %s, party_name = %s WHERE id = %s", (new_uno, new_pname, rid))
+                        else:
+                            cur.execute("UPDATE vouchers SET unit_no = ?, party_name = ? WHERE id = ?", (new_uno, new_pname, rid))
+                        fixed += 1
+                conn.commit()
+                if fixed:
+                    print(f"[DatabaseManager] clean_bogus_units: Sanitized {fixed} vouchers with invalid unit/block names.")
+        except Exception as e:
+            print(f"[DatabaseManager] clean_bogus_units error: {e}")
+        return fixed
 
     def seed_projects_from_file(self, config_path):
         """Seed project master data into database if empty."""
