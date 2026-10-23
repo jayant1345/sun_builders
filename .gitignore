@@ -13,6 +13,15 @@ downloads/
 uploads/*.zip
 uploads/*.rar
 uploads/*.7z
+*.zip
+*.rar
+*.7z
+build_bridge/
+dist_bridge/
+release_packages/
+CA_Office_Tally_Bridge_Complete_Package/
+Option_1_Standalone_EXE_No_Python_Needed/
+
 
 # Raw Tally database binary dumps (GitHub 100MB limit)
 data/**/*.1800

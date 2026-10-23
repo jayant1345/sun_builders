@@ -1,0 +1,12 @@
+*.zip
+build_bridge/
+dist_bridge/
+release_packages/
+CA_Office_Tally_Bridge_Complete_Package/
+Option_1_Standalone_EXE_No_Python_Needed/
+downloads/
+data/0100*/
+venv/
+__pycache__/
+*.log
+
